@@ -308,7 +308,7 @@
     margin-left: 10px;
 }
 
-.poi-selection-toolbar {
+.points-selection-toolbar {
     position: absolute;
     top: 10px;
     left: 50%;
@@ -325,11 +325,11 @@
     white-space: nowrap;
 }
 
-.poi-selection-count {
+.points-selection-count {
     font-weight: bold;
 }
 
-.poi-btn {
+.points-btn {
     padding: 4px 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -338,29 +338,29 @@
     font-size: 12px;
 }
 
-.poi-btn:disabled {
+.points-btn:disabled {
     opacity: 0.4;
     cursor: default;
 }
 
-.poi-btn:hover:not(:disabled) {
+.points-btn:hover:not(:disabled) {
     background-color: #eee;
 }
 
-.poi-btn-delete {
+.points-btn-delete {
     color: #d00;
     border-color: #d00;
 }
 
-.poi-btn-cancel {
+.points-btn-cancel {
     color: #666;
 }
 
-.leaflet-poi-selecting {
+.leaflet-points-selecting {
     cursor: default;
 }
 
-.poi-target-selecting .tracks-rows tr:hover {
+.points-target-selecting .tracks-rows tr:hover {
     background-color: #d0e4ff !important;
     cursor: pointer;
 }
