@@ -65,8 +65,10 @@ class PointsSelectionToolbar {
     }
 }
 
-// Interactive selection of track points: a rectangle selection for bulk
-// operations and picking a target track for copy/move.
+// Interactive selection of track points. Has two mutually exclusive modes:
+// - selection: a draggable rectangle picks points of one track;
+// - targeting: the picked points are copied/moved to a track chosen by
+//   a click on a track row or on a track segment.
 class PointsSelection {
     constructor({map, trackListContainer, getTrackCount, getTrackColor, resolveTrackFromRow, onApply, onActivate}) {
         this._map = map;
@@ -76,7 +78,8 @@ class PointsSelection {
         this._resolveTrackFromRow = resolveTrackFromRow;
         this._onApply = onApply;
         this._onActivate = onActivate;
-        this._state = null;
+        this._selection = null;
+        this._targeting = null;
         this._highlightLayer = null;
         this._toolbar = null;
         this._rowClickHandler = null;
@@ -93,42 +96,31 @@ class PointsSelection {
             return;
         }
         const selector = new RectangleSelect(getPointsBounds(track.markers)).addTo(this._map);
-        this._state = {
-            sourceTrack: track,
-            selector: selector,
-            selectedPoints: [],
-            phase: 'selecting',
-            action: null,
-        };
         selector.on('change', this._updateSelection, this);
+        this._selection = {sourceTrack: track, selector: selector, points: []};
         this._beginInteraction();
         this._updateSelection();
     }
 
     startTargeting(track, points, action) {
         this.cancel();
-        this._state = {
-            sourceTrack: track,
-            selector: null,
-            selectedPoints: points,
-            phase: 'targeting',
-            action: action,
-        };
+        if (!points.length || this._getTrackCount() < 2) {
+            return;
+        }
         this._beginInteraction();
-        this._toolbar.isTargeting(true);
-        this._updateHighlights();
-        this._beginTargetTrackSelection();
+        this._startTargeting(track, points, action);
     }
 
     cancel() {
-        const state = this._state;
-        if (!state) {
+        if (!this._selection && !this._targeting) {
             return;
         }
-        if (state.selector) {
-            state.selector.off('change', this._updateSelection, this);
-            this._map.removeLayer(state.selector);
+        if (this._selection) {
+            this._selection.selector.off('change', this._updateSelection, this);
+            this._map.removeLayer(this._selection.selector);
+            this._selection = null;
         }
+        this._targeting = null;
         if (this._highlightLayer) {
             this._map.removeLayer(this._highlightLayer);
             this._highlightLayer = null;
@@ -147,23 +139,23 @@ class PointsSelection {
         L.DomUtil.removeClass(this._map.getContainer(), 'leaflet-points-selecting');
         L.DomUtil.removeClass(this._trackListContainer, 'points-target-selecting');
         L.DomEvent.off(document, 'keydown', this._onKeyDown, this);
-        this._state = null;
     }
 
     cancelIfSourceTrack(track) {
-        if (this._state && this._state.sourceTrack === track) {
+        const mode = this._selection || this._targeting;
+        if (mode && mode.sourceTrack === track) {
             this.cancel();
         }
     }
 
     // Returns true if the click was consumed by the selection.
     handleSegmentClick(trackSegment, e) {
-        const state = this._state;
-        if (!state || state.phase !== 'targeting') {
+        const targeting = this._targeting;
+        if (!targeting) {
             return false;
         }
         const track = trackSegment._parentTrack;
-        if (track && track !== state.sourceTrack) {
+        if (track && track !== targeting.sourceTrack) {
             L.DomEvent.stopPropagation(e);
             this._executeAction(track);
         }
@@ -186,23 +178,19 @@ class PointsSelection {
     }
 
     _updateSelection() {
-        const state = this._state;
-        if (!state || !state.selector) {
+        const selection = this._selection;
+        if (!selection) {
             return;
         }
-        state.selectedPoints = filterPointsInBounds(state.sourceTrack.markers, state.selector.getBounds());
-        this._updateHighlights();
-        this._toolbar.count(state.selectedPoints.length);
+        selection.points = filterPointsInBounds(selection.sourceTrack.markers, selection.selector.getBounds());
+        this._updateHighlights(selection.sourceTrack, selection.points);
+        this._toolbar.count(selection.points.length);
     }
 
-    _updateHighlights() {
-        const state = this._state;
-        if (!state) {
-            return;
-        }
+    _updateHighlights(sourceTrack, points) {
         this._highlightLayer.clearLayers();
-        const color = this._getTrackColor(state.sourceTrack);
-        for (const point of state.selectedPoints) {
+        const color = this._getTrackColor(sourceTrack);
+        for (const point of points) {
             L.circleMarker(point.latlng, {
                 radius: 12,
                 color: color,
@@ -215,26 +203,32 @@ class PointsSelection {
     }
 
     _deleteSelected() {
-        const state = this._state;
-        if (!state || !state.selectedPoints.length) {
+        const selection = this._selection;
+        if (!selection || !selection.points.length) {
             return;
         }
-        this._onApply({action: 'delete', sourceTrack: state.sourceTrack, points: state.selectedPoints});
+        this._onApply({action: 'delete', sourceTrack: selection.sourceTrack, points: selection.points});
         this.cancel();
     }
 
     _startCopyMove(action) {
-        const state = this._state;
-        if (!state || !state.selectedPoints.length) {
+        const selection = this._selection;
+        if (!selection || !selection.points.length) {
             return;
         }
-        state.phase = 'targeting';
-        state.action = action;
-        this._toolbar.isTargeting(true);
-        this._beginTargetTrackSelection();
+        const {sourceTrack, points} = selection;
+        // Freeze the selection: the rectangle is no longer editable, so the
+        // set of points cannot change after the action was chosen.
+        selection.selector.off('change', this._updateSelection, this);
+        this._map.removeLayer(selection.selector);
+        this._selection = null;
+        this._startTargeting(sourceTrack, points, action);
     }
 
-    _beginTargetTrackSelection() {
+    _startTargeting(sourceTrack, points, action) {
+        this._targeting = {sourceTrack: sourceTrack, points: points, action: action};
+        this._toolbar.isTargeting(true);
+        this._updateHighlights(sourceTrack, points);
         L.DomUtil.addClass(this._trackListContainer, 'points-target-selecting');
         const table = this._trackListContainer.querySelector('.tracks-rows');
         this._rowClickHandler = (e) => {
@@ -243,7 +237,7 @@ class PointsSelection {
                 return;
             }
             const targetTrack = this._resolveTrackFromRow(row);
-            if (!targetTrack || targetTrack === this._state.sourceTrack) {
+            if (!targetTrack || targetTrack === sourceTrack) {
                 return;
             }
             e.stopPropagation();
@@ -254,15 +248,15 @@ class PointsSelection {
     }
 
     _executeAction(targetTrack) {
-        const state = this._state;
-        if (!state) {
+        const targeting = this._targeting;
+        if (!targeting) {
             return;
         }
         this._onApply({
-            action: state.action,
-            sourceTrack: state.sourceTrack,
+            action: targeting.action,
+            sourceTrack: targeting.sourceTrack,
             targetTrack: targetTrack,
-            points: state.selectedPoints,
+            points: targeting.points,
         });
         this.cancel();
     }

@@ -346,7 +346,6 @@ L.Control.TrackList = L.Control.extend({
 
         addSegmentAndEdit: function(track) {
             this.stopPlacingPoint();
-            this._pointsSelection.cancel();
             const segment = this.addTrackSegment(track);
             this.startEditTrackSegement(segment);
             segment.startDrawingLine();
@@ -940,6 +939,9 @@ L.Control.TrackList = L.Control.extend({
         },
 
         beginPointsSelection: function(track) {
+            if (!track.markers.length) {
+                return;
+            }
             this.stopPlacingPoint();
             this.stopEditLine();
             this._pointsSelection.start(track);

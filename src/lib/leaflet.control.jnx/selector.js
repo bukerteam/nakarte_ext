@@ -2,6 +2,23 @@ import L from 'leaflet';
 
 import './selector.css';
 
+// Minimum size of the rectangle in degrees, to prevent it from inverting
+// when a handle is dragged past the opposite side.
+const MIN_SIZE = 1e-7;
+
+// Draggable handles. Every handle changes the bounds sides listed
+// in `controls`; the opposite sides stay in place.
+const HANDLES = [
+    {name: 'top', kind: 'edge', controls: {north: true}},
+    {name: 'right', kind: 'edge', controls: {east: true}},
+    {name: 'bottom', kind: 'edge', controls: {south: true}},
+    {name: 'left', kind: 'edge', controls: {west: true}},
+    {name: 'topleft', kind: 'corner', controls: {north: true, west: true}},
+    {name: 'topright', kind: 'corner', controls: {north: true, east: true}},
+    {name: 'bottomleft', kind: 'corner', controls: {south: true, west: true}},
+    {name: 'bottomright', kind: 'corner', controls: {south: true, east: true}},
+];
+
 const RectangleSelect = L.Rectangle.extend({
         includes: L.Mixin.Events,
 
@@ -16,35 +33,26 @@ const RectangleSelect = L.Rectangle.extend({
 
         onAdd: function(map) {
             L.Rectangle.prototype.onAdd.call(this, map);
-            this.markers = [];
-            for (let position of ['top', 'right', 'bottom', 'left']) {
-                let marker = L.marker([0, 0], {
-                        icon: L.divIcon({className: `leaflet-rectangle-select-edge edge-${position}`}),
+            this.markers = {};
+            for (const handle of HANDLES) {
+                const marker = L.marker([0, 0], {
+                        icon: L.divIcon({
+                            className: `leaflet-rectangle-select-${handle.kind} ${handle.kind}-${handle.name}`
+                        }),
                         draggable: true
                     }
                 )
                     .addTo(map);
+                marker._handle = handle;
+                if (handle.kind === 'corner') {
+                    marker._icon.style.borderColor = this.options.color;
+                }
                 marker.on({
-                        drag: this.onMarkerDrag,
-                        dragend: this.onMarkerDragEnd
+                        drag: this.onHandleDrag,
+                        dragend: this.onHandleDragEnd
                     }, this
                 );
-                this.markers[position] = marker;
-            }
-            for (let position of ['topleft', 'topright', 'bottomleft', 'bottomright']) {
-                let marker = L.marker([0, 0], {
-                        icon: L.divIcon({className: `leaflet-rectangle-select-corner corner-${position}`}),
-                        draggable: true
-                    }
-                )
-                    .addTo(map);
-                marker._cornerPosition = position;
-                marker.on({
-                        drag: this.onCornerDrag,
-                        dragend: this.onCornerDragEnd
-                    }, this
-                );
-                this.markers[position] = marker;
+                this.markers[handle.name] = marker;
             }
             this.placeMarkers();
             map.on('zoomend', this.placeMarkers, this);
@@ -57,22 +65,24 @@ const RectangleSelect = L.Rectangle.extend({
             const size = bottomRightPixel.subtract(topLeftPixel);
             let center = topLeftPixel.add(size.divideBy(2));
             center = this._map.unproject(center);
-            this.markers['top'].setLatLng([bounds.getNorth(), center.lng]);
-            this.markers['top']._icon.style.width = `${size.x}px`;
-            this.markers['top']._icon.style.marginLeft = `-${size.x / 2}px`;
-            this.markers['right'].setLatLng([center.lat, bounds.getEast()]);
-            this.markers['right']._icon.style.height = `${size.y}px`;
-            this.markers['right']._icon.style.marginTop = `-${size.y / 2}px`;
-            this.markers['bottom'].setLatLng([bounds.getSouth(), center.lng]);
-            this.markers['bottom']._icon.style.width = `${size.x}px`;
-            this.markers['bottom']._icon.style.marginLeft = `-${size.x / 2}px`;
-            this.markers['left'].setLatLng([center.lat, bounds.getWest()]);
-            this.markers['left']._icon.style.height = `${size.y}px`;
-            this.markers['left']._icon.style.marginTop = `-${size.y / 2}px`;
-            this.markers['topleft'].setLatLng([bounds.getNorth(), bounds.getWest()]);
-            this.markers['topright'].setLatLng([bounds.getNorth(), bounds.getEast()]);
-            this.markers['bottomleft'].setLatLng([bounds.getSouth(), bounds.getWest()]);
-            this.markers['bottomright'].setLatLng([bounds.getSouth(), bounds.getEast()]);
+            for (const handle of HANDLES) {
+                const marker = this.markers[handle.name];
+                if (handle.kind === 'corner') {
+                    const lat = handle.controls.north ? bounds.getNorth() : bounds.getSouth();
+                    const lng = handle.controls.west ? bounds.getWest() : bounds.getEast();
+                    marker.setLatLng([lat, lng]);
+                } else if (handle.controls.north || handle.controls.south) {
+                    const lat = handle.controls.north ? bounds.getNorth() : bounds.getSouth();
+                    marker.setLatLng([lat, center.lng]);
+                    marker._icon.style.width = `${size.x}px`;
+                    marker._icon.style.marginLeft = `-${size.x / 2}px`;
+                } else {
+                    const lng = handle.controls.east ? bounds.getEast() : bounds.getWest();
+                    marker.setLatLng([center.lat, lng]);
+                    marker._icon.style.height = `${size.y}px`;
+                    marker._icon.style.marginTop = `-${size.y / 2}px`;
+                }
+            }
         },
 
         onRemove: function(map) {
@@ -84,50 +94,30 @@ const RectangleSelect = L.Rectangle.extend({
             L.Rectangle.prototype.onRemove.call(this, map);
         },
 
-        setBoundsFromMarkers: function() {
-            this.setBounds(
-                [
-                    [this.markers['top'].getLatLng().lat, this.markers['left'].getLatLng().lng],
-                    [this.markers['bottom'].getLatLng().lat, this.markers['right'].getLatLng().lng]
-                ]
-            );
-        },
-        onMarkerDrag: function() {
-            this.setBoundsFromMarkers();
-        },
-
-        onMarkerDragEnd: function() {
-            this.setBoundsFromMarkers();
-            this.placeMarkers();
-            this.fire('change');
-        },
-
-        onCornerDrag: function(e) {
-            const pos = e.target._cornerPosition;
+        onHandleDrag: function(e) {
+            const handle = e.target._handle;
             const latlng = e.target.getLatLng();
             const bounds = this.getBounds();
             let north = bounds.getNorth();
             let south = bounds.getSouth();
             let east = bounds.getEast();
             let west = bounds.getWest();
-            if (pos === 'topleft') {
-                north = latlng.lat;
-                west = latlng.lng;
-            } else if (pos === 'topright') {
-                north = latlng.lat;
-                east = latlng.lng;
-            } else if (pos === 'bottomleft') {
-                south = latlng.lat;
-                west = latlng.lng;
-            } else if (pos === 'bottomright') {
-                south = latlng.lat;
-                east = latlng.lng;
+            if (handle.controls.north) {
+                north = Math.max(latlng.lat, south + MIN_SIZE);
+            }
+            if (handle.controls.south) {
+                south = Math.min(latlng.lat, north - MIN_SIZE);
+            }
+            if (handle.controls.east) {
+                east = Math.max(latlng.lng, west + MIN_SIZE);
+            }
+            if (handle.controls.west) {
+                west = Math.min(latlng.lng, east - MIN_SIZE);
             }
             this.setBounds([[north, west], [south, east]]);
         },
 
-        onCornerDragEnd: function(e) {
-            this.onCornerDrag(e);
+        onHandleDragEnd: function() {
             this.placeMarkers();
             this.fire('change');
         }
