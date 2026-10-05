@@ -175,3 +175,16 @@ test('Order contains markers for custom layers in right order', function () {
     const customBottomOrder = titlesByOrder.indexOf('#custom-bottom');
     assert.isAbove(customTopOrder, customBottomOrder);
 });
+
+test('MapMagic layer properties', function () {
+    const layerDef = layersDefs.filter((item) => item.title === 'MapMagic')[0];
+    assert.isFalse(layerDef.layer.options.isOverlay);
+    assert.equal(layerDef.layer.options.attribution, '<a href="https://mapmagic.app">MapMagic</a>');
+});
+
+test('MapMagic layer is in the OpenStreetMap alternatives group after OpenTopoMap', function () {
+    const groupDef = groupsDefs.filter((item) => item.title === 'OpenStreetMap alternatives')[0];
+    const topoMapIndex = groupDef.layers.indexOf('OpenTopoMap');
+    assert.equal(groupDef.layers[topoMapIndex + 1], 'MapMagic');
+    assert.equal(titlesByOrder[titlesByOrder.indexOf('OpenTopoMap') + 1], 'MapMagic');
+});
