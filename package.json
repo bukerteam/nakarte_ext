@@ -5,7 +5,7 @@
     "build": "node scripts/build.js",
     "start": "cross-env NODE_ENV=development webpack serve --open --config webpack/webpack.config.js",
     "lint:code": "cross-env NODE_ENV=production eslint --ext js .",
-    "lint:style": "stylelint '**/*.css'",
+    "lint:style": "stylelint \"**/*.css\"",
     "lint": "npm run lint:code && npm run lint:style",
     "test": "cross-env NODE_ENV=testing  karma start --single-run --browsers ChromeHeadless test/karma.conf.js",
     "test-docker": "cross-env NODE_ENV=testing  karma start --single-run --browsers ChromiumHeadlessInDocker test/karma.conf.js",

@@ -155,7 +155,7 @@ const loaders = [
 
     {
         test: /\.js$/u,
-        exclude: isProduction ? [/node_modules\/core-js/u, /node_modules\/webpack/u] : /node_modules/u,
+        exclude: isProduction ? [/node_modules[\\/]core-js/u, /node_modules[\\/]webpack/u] : /node_modules[\\/]/u,
         use: [
             {
                 loader: 'babel-loader',
