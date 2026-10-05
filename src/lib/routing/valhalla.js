@@ -118,6 +118,22 @@ function parseTrip(data) {
     };
 }
 
+// Valhalla reports routing failures (no path, distance limit, bad request) with HTTP 400
+// and a descriptive error in the body; surface it instead of a bare status code.
+async function readErrorMessage(response) {
+    if (typeof response.json === 'function') {
+        try {
+            const data = await response.json();
+            if (data && data.error) {
+                return data.error;
+            }
+        } catch {
+            // The error response may have no JSON body.
+        }
+    }
+    return `Routing service returned ${response.status}`;
+}
+
 class ValhallaProvider {
     constructor(settings = {}) {
         this._url = settings.url;
@@ -135,7 +151,7 @@ class ValhallaProvider {
             timeout: this._timeout,
         });
         if (!response.ok) {
-            throw new Error(`Routing service returned ${response.status}`);
+            throw new Error(await readErrorMessage(response));
         }
         const data = await response.json();
         return parseTrip(data);

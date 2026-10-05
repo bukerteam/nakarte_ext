@@ -219,6 +219,31 @@ test('throws when the service responds with an error status', async function () 
     }
 });
 
+test('surfaces the service error message from an error response', async function () {
+    const restoreFetch = stubFetch(async function () {
+        return {
+            ok: false,
+            status: 400,
+            json: async function () {
+                return {error: 'Path distance exceeds the max distance limit: 150000 meters'};
+            },
+        };
+    });
+    try {
+        const provider = new ValhallaProvider({url: 'https://routing.example/route'});
+        let caughtError = null;
+        try {
+            await provider.route({points: TEST_POINTS, profile: 'cycling', options: {}});
+        } catch (error) {
+            caughtError = error;
+        }
+        assert.instanceOf(caughtError, Error);
+        assert.include(caughtError.message, 'max distance limit');
+    } finally {
+        restoreFetch();
+    }
+});
+
 test('throws when the service reports a routing error', async function () {
     const restoreFetch = stubFetch(async function () {
         return {
