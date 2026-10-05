@@ -149,6 +149,9 @@ L.Control.Coordinates = L.Control.extend({
         },
 
         onMapRightClick: function(e) {
+            if (e.originalEvent?._routePlannerHandled) {
+                return;
+            }
             L.DomEvent.stop(e);
             function createItem(format, elevation, overrides = {}) {
                 const {lat, lng} = formats.formatLatLng(e.latlng.wrap(), format);

@@ -1448,6 +1448,35 @@ L.Control.TrackList = L.Control.extend({
                     {text: 'Rename', callback: this.renamePoint.bind(this, e.marker)},
                     {text: 'Move', callback: this.beginPointMove.bind(this, e.marker)},
                     {text: 'Copy coordinates', callback: this.copyPointCoordinatesToClipboard.bind(this, e.marker, e)},
+                    '-',
+                    {
+                        text: 'Route from',
+                        callback: () =>
+                            this._map.fire('routeplanner:setpoint', {
+                                point: 'from',
+                                latlng: e.marker.latlng,
+                                label: e.marker.label,
+                            }),
+                    },
+                    {
+                        text: 'Route to',
+                        callback: () =>
+                            this._map.fire('routeplanner:setpoint', {
+                                point: 'to',
+                                latlng: e.marker.latlng,
+                                label: e.marker.label,
+                            }),
+                    },
+                    {
+                        text: 'Route via',
+                        callback: () =>
+                            this._map.fire('routeplanner:setpoint', {
+                                point: 'via',
+                                latlng: e.marker.latlng,
+                                label: e.marker.label,
+                            }),
+                    },
+                    '-',
                     {text: 'Delete', callback: this.removePoint.bind(this, e.marker)},
                 ]
             ).show(e);

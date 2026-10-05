@@ -34,6 +34,8 @@ import * as logging from '~/lib/logging';
 import safeLocalStorage from '~/lib/safe-localstorage';
 import {ExternalMaps} from '~/lib/leaflet.control.external-maps';
 import {SearchControl} from '~/lib/leaflet.control.search';
+import {RoutePlanner} from '~/lib/leaflet.control.route-planner';
+import {TripList} from '~/lib/leaflet.control.trip-list';
 import '~/lib/leaflet.placemark';
 import '~/vendored/mapbbcode/FunctionButton';
 import Contextmenu from '~/lib/contextmenu';
@@ -179,6 +181,18 @@ function setUp() { // eslint-disable-line complexity
             notify(customMessage);
         }
     }).addTo(map);
+
+    const routePlanner = new RoutePlanner({position: 'topleft'}).addTo(map);
+    const tripList = new TripList({position: 'bottomright'});
+    routePlanner.on('save', (e) => routePlanner.markRouteSaved(tripList.saveRoute(e.route)));
+    tripList.on('editroute', (e) => routePlanner.editRoute(e.route));
+    routePlanner.on('editcancelled', (e) => tripList.cancelRouteEditing(e.routeId));
+    tripList.on('routedeleted', (e) => routePlanner.discardSavedRoute(e.routeId));
+    tripList.on('converttotrack', (e) => {
+        const track = e.route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        tracklist.addTrack({name: e.route.name, tracks: [track]});
+    });
+
     let {valid: validPositionInHash} = map.validateState(hashState.getState('m'));
     map.enableHashState('m', [config.defaultZoom, ...config.defaultLocation]);
 
@@ -239,6 +253,7 @@ function setUp() { // eslint-disable-line complexity
     /* controls bottom-right corner */
 
     tracklist.addTo(map);
+    tripList.addTo(map);
     const tracksHashParams = tracklist.hashParams();
 
     let hasTrackParamsInHash = false;
@@ -319,10 +334,16 @@ function setUp() { // eslint-disable-line complexity
 
     tracklist.on('startedit', () => azimuthControl.disableControl());
     tracklist.on('elevation-shown', () => azimuthControl.hideProfile());
+    tracklist.on('elevation-shown', () => routePlanner.hideElevationProfile());
     azimuthControl.on('enabled', () => {
         tracklist.stopEditLine();
     });
     azimuthControl.on('elevation-shown', () => tracklist.hideElevationProfile());
+    azimuthControl.on('elevation-shown', () => routePlanner.hideElevationProfile());
+    routePlanner.on('elevation-shown', () => {
+        tracklist.hideElevationProfile();
+        azimuthControl.hideProfile();
+    });
 
     /* setup events logging */
 

@@ -1,0 +1,234 @@
+.route-planner {
+    display: none;
+    width: 320px;
+    box-sizing: border-box;
+    padding: 16px;
+    background: #fff;
+    box-shadow: 1px 0 5px rgb(0 0 0 / 25%);
+    font: 14px/1.4 Arial, sans-serif;
+    z-index: 1000;
+}
+
+.route-planner.visible {
+    display: block;
+}
+
+.route-planner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.route-planner h2 {
+    margin: 0;
+    color: #202124;
+    font-size: 20px;
+    font-weight: 500;
+}
+
+.route-planner button {
+    font: inherit;
+    cursor: pointer;
+}
+
+.route-planner-close {
+    border: 0;
+    padding: 0 5px;
+    color: #3c4043;
+    background: transparent;
+    font-size: 26px !important;
+    line-height: 24px;
+}
+
+.route-planner-points {
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.route-planner-point {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 8px;
+}
+
+.route-planner-point + .route-planner-point {
+    border-top: 1px solid #e8eaed;
+}
+
+.route-planner-via-points:not(:empty) {
+    border-top: 1px solid #e8eaed;
+}
+
+.route-planner-via-points:not(:empty) + .route-planner-point {
+    border-top: 1px solid #e8eaed;
+}
+
+.route-planner-via-points .route-planner-point + .route-planner-point {
+    border-top: 1px solid #e8eaed;
+}
+
+.route-planner-point-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border-radius: 50%;
+    color: #fff;
+    background: #1a73e8;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.route-planner-point-to .route-planner-point-icon,
+.route-planner-marker-to {
+    background: #d93025;
+}
+
+.route-planner-place {
+    overflow: hidden;
+    flex: 1;
+    border: 0;
+    padding: 3px 0;
+    color: #3c4043;
+    background: transparent;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-planner-mode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: #3c4043;
+}
+
+.route-planner-profile {
+    min-width: 130px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 6px 8px;
+    color: #202124;
+    background: #fff;
+    font: inherit;
+}
+
+.route-planner-avoid-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    color: #3c4043;
+}
+
+.route-planner-avoid-options input:disabled + span {
+    color: #9aa0a6;
+}
+
+.route-planner-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.route-planner-actions button {
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: #1a73e8;
+    background: #fff;
+}
+
+.route-planner-status {
+    min-height: 20px;
+    margin: 14px 0 0;
+    color: #5f6368;
+}
+
+.route-planner-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px !important;
+    height: 28px !important;
+    margin: 0 !important;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-sizing: border-box;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 40%);
+    color: #fff;
+    background: #1a73e8;
+    font-weight: bold;
+}
+
+.route-planner-point-via .route-planner-point-icon {
+    border: 1px solid #1a73e8;
+    color: #1a73e8;
+    background: #fff;
+}
+
+.route-planner-point-icon-image {
+    overflow: hidden;
+    border: 0 !important;
+}
+
+.route-planner-point-icon-image img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.route-planner-via-label {
+    overflow: hidden;
+    flex: 1;
+    color: #3c4043;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-planner-point-via {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.route-planner-point-via:active {
+    cursor: grabbing;
+}
+
+.route-planner-drag-handle {
+    padding-left: 8px;
+    color: #9aa0a6;
+    font-size: 18px;
+    line-height: 16px;
+}
+
+.route-planner-marker-via {
+    width: 22px !important;
+    height: 22px !important;
+    background: #fff;
+    border-color: #1a73e8;
+    color: #1a73e8;
+    font-size: 11px;
+}
+
+.route-planner-picking {
+    cursor: crosshair;
+}
+
+@media (max-width: 620px) {
+    .route-planner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: min(100%, 360px);
+        max-height: 100%;
+        overflow: auto;
+    }
+}
