@@ -1,33 +1,37 @@
 import L from 'leaflet';
 
 import Contextmenu from '~/lib/contextmenu';
+import '~/lib/leaflet.lineutil.simplifyLatLngs';
+import {ROUTE_COLORS, formatDistance, formatDuration} from '~/lib/route-planning/common';
 import safeLocalStorage from '~/lib/safe-localstorage';
 import './style.css';
 
-const ROUTE_COLORS = ['#1a73e8', '#d93025', '#188038', '#9334e6', '#e37400'];
 const STORAGE_KEY = 'tripListState';
-
-function formatDistance(meters) {
-    if (meters >= 1000) {
-        return `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`;
-    }
-    return `${Math.round(meters)} m`;
-}
-
-function formatDuration(seconds) {
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) {
-        return `${minutes} min`;
-    }
-    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
+// Same tolerance as the track list: simplifies stored geometry without visible loss.
+const SIMPLIFY_TOLERANCE = 360 / (1 << 24);
 
 function routeTitle(route) {
     return `${route.from.label || 'Start'} → ${route.to.label || 'Destination'}`;
 }
 
 function routeColor(route) {
-    return route.color || ROUTE_COLORS[(route.id - 1) % ROUTE_COLORS.length];
+    if (route.color) {
+        return route.color;
+    }
+    const id = Math.abs(Number(route.id)) || 1;
+    return ROUTE_COLORS[(id - 1) % ROUTE_COLORS.length];
+}
+
+function simplifyGeometry(geometry) {
+    if (!geometry || geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) {
+        return geometry;
+    }
+    const latlngs = geometry.coordinates.map(([lng, lat]) => L.latLng(lat, lng));
+    const simplified = L.LineUtil.simplifyLatlngs(latlngs, SIMPLIFY_TOLERANCE);
+    return {
+        type: 'LineString',
+        coordinates: simplified.map((point) => [point.lng, point.lat]),
+    };
 }
 
 function serializeRoute(route) {
@@ -170,33 +174,35 @@ const TripList = L.Control.extend({
             this._selectedTrip = this._trips.find((trip) => trip.id === state.selectedTripId) || this._trips[0] || null;
             const maxTripId = Math.max(0, ...this._trips.map((trip) => trip.id));
             const maxRouteId = Math.max(0, ...this._trips.flatMap((trip) => trip.routes.map((route) => route.id)));
-            this._nextTripId = state.nextTripId || maxTripId + 1;
-            this._nextRouteId = state.nextRouteId || maxRouteId + 1;
+            this._nextTripId = Math.max(Number(state.nextTripId) || 0, maxTripId + 1);
+            this._nextRouteId = Math.max(Number(state.nextRouteId) || 0, maxRouteId + 1);
         } catch (error) {
             safeLocalStorage.removeItem(STORAGE_KEY);
         }
     },
 
     saveRoute: function (routeData) {
+        const simplified = {...routeData, geometry: simplifyGeometry(routeData.geometry)};
+        let routeId = simplified.id;
         let trip = this._selectedTrip;
-        if (routeData.id) {
-            const routeTrip = this._trips.find((item) => item.routes.some((route) => route.id === routeData.id));
+        if (routeId) {
+            const routeTrip = this._trips.find((item) => item.routes.some((route) => route.id === routeId));
             if (routeTrip) {
                 trip = routeTrip;
                 this._selectedTrip = trip;
             } else {
-                routeData.id = null;
+                routeId = null;
             }
         }
         if (!trip) {
             trip = this.createTrip();
         }
-        let route = trip.routes.find((item) => item.id === routeData.id);
+        let route = trip.routes.find((item) => item.id === routeId);
         if (route) {
             this._map.removeLayer(route.layer);
-            Object.assign(route, routeData);
+            Object.assign(route, simplified);
         } else {
-            route = {...routeData, id: this._nextRouteId, visible: true};
+            route = {...simplified, id: this._nextRouteId, visible: true};
             this._nextRouteId += 1;
             trip.routes.push(route);
         }
@@ -232,8 +238,15 @@ const TripList = L.Control.extend({
 
     setTripVisibility: function (trip, visible) {
         trip.visible = visible;
-        trip.routes.forEach((route) => this.setRouteVisibility(trip, route, route.visible));
+        trip.routes.forEach((route) => {
+            if (visible && route.visible && this._editingRoute !== route) {
+                this._map.addLayer(route.layer);
+            } else {
+                this._map.removeLayer(route.layer);
+            }
+        });
         this.persistState();
+        this.render();
     },
 
     focusRoute: function (route) {

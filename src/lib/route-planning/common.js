@@ -16,4 +16,4 @@ function formatDuration(seconds) {
     return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
-export {DEFAULT_ROUTE_COLOR, formatDistance, formatDuration};
+export {ROUTE_COLORS, DEFAULT_ROUTE_COLOR, formatDistance, formatDuration};
