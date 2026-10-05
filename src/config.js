@@ -19,6 +19,12 @@ const config = {
     mapillaryRasterTilesUrl: 'https://mapillary.nakarte.me/{z}/{x}/{y}',
     urlsBypassCORSProxy: [new RegExp('^https://pkk\\.rosreestr\\.ru/', 'u')],
     elevationTileUrl: 'https://tiles.nakarte.me/elevation/{z}/{x}/{y}',
+    // Public routing instances are for development only, production requires a self-hosted instance.
+    routing: {
+        provider: 'valhalla',
+        url: 'https://valhalla1.openstreetmap.de/route',
+        apiKey: secrets.routingApiKey,
+    },
     ...secrets,
 };
 
