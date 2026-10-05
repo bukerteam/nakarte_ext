@@ -3,28 +3,15 @@ import L from 'leaflet';
 import config from '~/config';
 import Contextmenu from '~/lib/contextmenu';
 import {ElevationProfile, calcSamplingInterval} from '~/lib/leaflet.control.elevation-profile';
+import {DEFAULT_ROUTE_COLOR, formatDistance, formatDuration} from '~/lib/route-planning/common';
 import {createRoutingProvider} from '~/lib/routing';
+import {PROFILES} from '~/lib/routing/profiles';
 import './style.css';
 
-const DEFAULT_ROUTE_COLOR = '#1a73e8';
+const PROFILE_OPTIONS_HTML = PROFILES.map(({id, label}) => `<option value="${id}">${label}</option>`).join('');
 
 function formatCoordinate(latlng) {
     return `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
-}
-
-function formatDistance(meters) {
-    if (meters >= 1000) {
-        return `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`;
-    }
-    return `${Math.round(meters)} m`;
-}
-
-function formatDuration(seconds) {
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) {
-        return `${minutes} min`;
-    }
-    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 const RoutePlanner = L.Control.extend({
@@ -37,16 +24,18 @@ const RoutePlanner = L.Control.extend({
     initialize: function (options) {
         L.Control.prototype.initialize.call(this, options);
         this._provider = (options && options.provider) || null;
-        this._profile = 'driving';
+        this._profile = PROFILES[0].id;
         this._avoidTolls = false;
         this._avoidUnpaved = false;
+        this._preferShortest = false;
         this._routeLayer = L.geoJSON(null, {
             style: {color: DEFAULT_ROUTE_COLOR, weight: 6, opacity: 0.9},
         });
         this._markers = L.layerGroup();
         this._viaPoints = [];
-        this._viaPointDetails = [];
+        this._viaLabels = [];
         this._route = null;
+        this._projectedRoute = null;
         this._editingRouteId = null;
     },
 
@@ -72,16 +61,16 @@ const RoutePlanner = L.Control.extend({
             <label class="route-planner-mode">
                 Mode
                 <select class="route-planner-profile" aria-label="Mode of transportation">
-                    <option value="driving">Car</option>
-                    <option value="cycling">Bike</option>
-                    <option value="motorcycle">Motorcycle</option>
-                    <option value="walking">Foot</option>
+                    ${PROFILE_OPTIONS_HTML}
                 </select>
             </label>
             <div class="route-planner-avoid-options">
                 <label><input type="checkbox" class="route-planner-avoid-tolls"/><span>Avoid toll roads</span></label>
                 <label>
                     <input type="checkbox" class="route-planner-avoid-unpaved"/><span>Avoid unpaved roads</span>
+                </label>
+                <label>
+                    <input type="checkbox" class="route-planner-prefer-shortest"/><span>Prefer shortest route</span>
                 </label>
             </div>
             <div class="route-planner-actions">
@@ -99,6 +88,7 @@ const RoutePlanner = L.Control.extend({
         this._profileSelect = this._container.querySelector('.route-planner-profile');
         this._avoidTollsInput = this._container.querySelector('.route-planner-avoid-tolls');
         this._avoidUnpavedInput = this._container.querySelector('.route-planner-avoid-unpaved');
+        this._preferShortestInput = this._container.querySelector('.route-planner-prefer-shortest');
         this._saveButton = this._container.querySelector('.route-planner-save');
         this._elevationButton = this._container.querySelector('.route-planner-elevation');
         this._container.querySelector('.route-planner-close').addEventListener('click', this.hide.bind(this));
@@ -111,6 +101,7 @@ const RoutePlanner = L.Control.extend({
         this._profileSelect.addEventListener('change', this.onRoutingOptionsChange.bind(this));
         this._avoidTollsInput.addEventListener('change', this.onRoutingOptionsChange.bind(this));
         this._avoidUnpavedInput.addEventListener('change', this.onRoutingOptionsChange.bind(this));
+        this._preferShortestInput.addEventListener('change', this.onRoutingOptionsChange.bind(this));
         this.updateAvoidOptions();
 
         L.DomEvent.disableClickPropagation(this._container);
@@ -158,7 +149,7 @@ const RoutePlanner = L.Control.extend({
 
     onRoutePlannerPointSelect: function (e) {
         if (e.point === 'via') {
-            this.addViaPoint(e.latlng, e.label, e.iconUrl, e.iconScale);
+            this.addViaPoint(e.latlng, e.label);
         } else {
             this.setPoint(e.point, e.latlng, e.label);
         }
@@ -168,6 +159,7 @@ const RoutePlanner = L.Control.extend({
         this._profile = this._profileSelect.value;
         this._avoidTolls = this._avoidTollsInput.checked;
         this._avoidUnpaved = this._avoidUnpavedInput.checked;
+        this._preferShortest = this._preferShortestInput.checked;
         this.updateAvoidOptions();
         if (this._from && this._to) {
             this.buildRoute();
@@ -175,7 +167,7 @@ const RoutePlanner = L.Control.extend({
     },
 
     updateAvoidOptions: function () {
-        const available = this._profile === 'driving' || this._profile === 'motorcycle';
+        const available = (this._profile === 'driving' || this._profile === 'motorcycle') && !this._preferShortest;
         this._avoidTollsInput.disabled = !available;
         this._avoidUnpavedInput.disabled = !available;
     },
@@ -275,7 +267,6 @@ const RoutePlanner = L.Control.extend({
     updateViaPoints: function () {
         this._viaPointsContainer.innerHTML = '';
         this._viaPoints.forEach((point, index) => {
-            const details = this._viaPointDetails[index];
             const row = L.DomUtil.create(
                 'div',
                 'route-planner-point route-planner-point-via',
@@ -283,16 +274,9 @@ const RoutePlanner = L.Control.extend({
             );
             row.addEventListener('pointerdown', this.startViaPointListDrag.bind(this, index));
             const icon = L.DomUtil.create('span', 'route-planner-point-icon', row);
-            if (details && details.iconUrl) {
-                icon.classList.add('route-planner-point-icon-image');
-                const image = L.DomUtil.create('img', '', icon);
-                image.src = details.iconUrl;
-                image.alt = '';
-            } else {
-                icon.textContent = index + 1;
-            }
+            icon.textContent = index + 1;
             const label = L.DomUtil.create('span', 'route-planner-via-label', row);
-            label.textContent = (details && details.label) || formatCoordinate(point);
+            label.textContent = this._viaLabels[index] || formatCoordinate(point);
             const dragHandle = L.DomUtil.create('span', 'route-planner-drag-handle', row);
             dragHandle.textContent = '↕';
         });
@@ -396,14 +380,14 @@ const RoutePlanner = L.Control.extend({
         this.buildRoute();
     },
 
-    addViaPoint: function (latlng, label = null, iconUrl = null, iconScale = null) {
+    addViaPoint: function (latlng, label = null) {
         if (!this._from || !this._to) {
             this.show();
             this._status.textContent = 'Choose a starting point and destination first.';
             return;
         }
         this._viaPoints.push(L.latLng(latlng));
-        this._viaPointDetails.push({label, iconUrl, iconScale});
+        this._viaLabels.push(label);
         this.updateViaPoints();
         this.updateMarkers();
         this.buildRoute();
@@ -414,9 +398,9 @@ const RoutePlanner = L.Control.extend({
             return;
         }
         const [point] = this._viaPoints.splice(fromIndex, 1);
-        const [details] = this._viaPointDetails.splice(fromIndex, 1);
+        const [label] = this._viaLabels.splice(fromIndex, 1);
         this._viaPoints.splice(toIndex, 0, point);
-        this._viaPointDetails.splice(toIndex, 0, details);
+        this._viaLabels.splice(toIndex, 0, label);
         this.updatePoints();
         this.updateMarkers();
         this.buildRoute();
@@ -425,7 +409,7 @@ const RoutePlanner = L.Control.extend({
     removeViaPoint: function (index, e) {
         L.DomEvent.stopPropagation(e.originalEvent);
         this._viaPoints.splice(index, 1);
-        this._viaPointDetails.splice(index, 1);
+        this._viaLabels.splice(index, 1);
         this.updateMarkers();
         this.updateViaPoints();
         this.buildRoute();
@@ -476,7 +460,7 @@ const RoutePlanner = L.Control.extend({
         }
         const index = this.getViaPointInsertIndex(latlng);
         this._viaPoints.splice(index, 0, L.latLng(latlng));
-        this._viaPointDetails.splice(index, 0, null);
+        this._viaLabels.splice(index, 0, null);
         this.updateMarkers();
         this.updateViaPoints();
         this.buildRoute();
@@ -492,18 +476,30 @@ const RoutePlanner = L.Control.extend({
         return nextIndex === -1 ? this._viaPoints.length : nextIndex;
     },
 
+    getProjectedRoute: function () {
+        if (!this._route) {
+            return null;
+        }
+        if (this._projectedRoute && this._projectedRoute.route === this._route) {
+            return this._projectedRoute.points;
+        }
+        const points = this._route.geometry.coordinates.map(([lng, lat]) => this._map.project([lat, lng], 18));
+        this._projectedRoute = {route: this._route, points};
+        return points;
+    },
+
     getRoutePosition: function (latlng) {
-        const coordinates = this._route && this._route.geometry.coordinates;
-        if (!coordinates || !coordinates.length) {
+        const points = this.getProjectedRoute();
+        if (!points || points.length < 2) {
             return null;
         }
         const point = this._map.project(latlng, 18);
         let distanceAlongRoute = 0;
         let closestDistance = Infinity;
         let closestPosition = null;
-        for (let index = 1; index < coordinates.length; index += 1) {
-            const start = this._map.project([coordinates[index - 1][1], coordinates[index - 1][0]], 18);
-            const end = this._map.project([coordinates[index][1], coordinates[index][0]], 18);
+        for (let index = 1; index < points.length; index += 1) {
+            const start = points[index - 1];
+            const end = points[index];
             const segment = end.subtract(start);
             const segmentLength = start.distanceTo(end);
             const segmentLengthSquared = segment.x ** 2 + segment.y ** 2;
@@ -540,27 +536,20 @@ const RoutePlanner = L.Control.extend({
         return {
             avoidTolls: this._avoidTolls,
             avoidUnpaved: this._avoidUnpaved,
+            preferShortest: this._preferShortest,
         };
-    },
-
-    isRouteStale: function ({from, to, viaPoints, profile}) {
-        return (
-            this._from !== from ||
-            this._to !== to ||
-            this._profile !== profile ||
-            this._viaPoints.length !== viaPoints.length ||
-            this._viaPoints.some((point, index) => point !== viaPoints[index])
-        );
     },
 
     buildRoute: async function () {
         this.hideElevationProfile();
         this._routeLayer.clearLayers();
         this._route = null;
+        this._projectedRoute = null;
         this.updateSaveButton();
         this._status.textContent = 'Building route…';
         this._request?.abort();
-        this._request = new AbortController();
+        const request = new AbortController();
+        this._request = request;
         const from = this._from;
         const to = this._to;
         const viaPoints = this._viaPoints.slice();
@@ -571,28 +560,25 @@ const RoutePlanner = L.Control.extend({
                 points: [from, ...viaPoints, to],
                 profile,
                 options,
-                signal: this._request.signal,
+                signal: request.signal,
             });
-            if (this.isRouteStale({from, to, viaPoints, profile})) {
+            if (this._request !== request) {
                 return;
             }
-            route.viaPositions = this.computeViaPositions(route.geometry.coordinates);
-            this._routeLayer.addData({type: 'Feature', geometry: route.geometry});
             this._route = route;
+            route.viaPositions = this.computeViaPositions();
+            this._routeLayer.addData({type: 'Feature', geometry: route.geometry});
             this.updateSaveButton();
             this._status.textContent = `${formatDuration(route.duration)} · ${formatDistance(route.distance)}`;
             this._map.fitBounds(this._routeLayer.getBounds(), {padding: [40, 40], maxZoom: 15});
         } catch (error) {
-            if (error.name !== 'AbortError' && !this.isRouteStale({from, to, viaPoints, profile})) {
+            if (error.name !== 'AbortError' && this._request === request) {
                 this._status.textContent = `Could not build a route: ${error.message}`;
             }
         }
     },
 
-    computeViaPositions: function (coordinates) {
-        if (!coordinates.length) {
-            return [];
-        }
+    computeViaPositions: function () {
         return this._viaPoints.map((point) => this.getRoutePosition(point)).filter((position) => position !== null);
     },
 
@@ -621,7 +607,7 @@ const RoutePlanner = L.Control.extend({
                 viaPoints: this._viaPoints.map((point, index) => ({
                     lat: point.lat,
                     lng: point.lng,
-                    ...(this._viaPointDetails[index] || {}),
+                    label: this._viaLabels[index] || null,
                 })),
                 profile: this._profile,
                 options: this.getRoutingOptions(),
@@ -658,17 +644,15 @@ const RoutePlanner = L.Control.extend({
         this._fromLabel = route.from.label;
         this._toLabel = route.to.label;
         this._viaPoints = (route.viaPoints || []).map((point) => L.latLng(point));
-        this._viaPointDetails = (route.viaPoints || []).map(({label, iconUrl, iconScale}) => ({
-            label,
-            iconUrl,
-            iconScale,
-        }));
+        this._viaLabels = (route.viaPoints || []).map((point) => point.label || null);
         this._profile = route.profile;
         this._avoidTolls = Boolean(options.avoidTolls);
         this._avoidUnpaved = Boolean(options.avoidUnpaved);
+        this._preferShortest = Boolean(options.preferShortest);
         this._profileSelect.value = this._profile;
         this._avoidTollsInput.checked = this._avoidTolls;
         this._avoidUnpavedInput.checked = this._avoidUnpaved;
+        this._preferShortestInput.checked = this._preferShortest;
         this.updateAvoidOptions();
         this.updatePoints();
         this.updateMarkers();
@@ -678,6 +662,7 @@ const RoutePlanner = L.Control.extend({
 
     clear: function () {
         this._request?.abort();
+        this._request = null;
         this.hideElevationProfile();
         if (this._editingRouteId) {
             this.fire('editcancelled', {routeId: this._editingRouteId});
@@ -687,9 +672,10 @@ const RoutePlanner = L.Control.extend({
         this._fromLabel = null;
         this._toLabel = null;
         this._viaPoints = [];
-        this._viaPointDetails = [];
+        this._viaLabels = [];
         this.setRouteColor(DEFAULT_ROUTE_COLOR);
         this._route = null;
+        this._projectedRoute = null;
         this._editingRouteId = null;
         this._pickingPoint = null;
         this._map.getContainer().classList.remove('route-planner-picking');

@@ -32,12 +32,12 @@
     cursor: pointer;
 }
 
-.route-planner-close {
+.route-planner button.route-planner-close {
     border: 0;
     padding: 0 5px;
     color: #3c4043;
     background: transparent;
-    font-size: 26px !important;
+    font-size: 26px;
     line-height: 24px;
 }
 
@@ -172,16 +172,6 @@
     border: 1px solid #1a73e8;
     color: #1a73e8;
     background: #fff;
-}
-
-.route-planner-point-icon-image {
-    overflow: hidden;
-    border: 0 !important;
-}
-
-.route-planner-point-icon-image img {
-    max-width: 100%;
-    max-height: 100%;
 }
 
 .route-planner-via-label {
