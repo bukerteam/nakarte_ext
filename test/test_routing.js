@@ -1,6 +1,7 @@
 /* eslint-disable camelcase -- Valhalla request and costing option names are snake_case. */
-import {createRoutingProvider} from '~/lib/routing';
+import {createRoutingProvider, registerRoutingProvider} from '~/lib/routing';
 import {decodePolyline} from '~/lib/routing/polyline';
+import {PROFILES} from '~/lib/routing/profiles';
 import {ValhallaProvider, buildCostingOptions, buildRouteRequest} from '~/lib/routing/valhalla';
 
 function encodeDelta(delta) {
@@ -36,6 +37,23 @@ function stubFetch(handler) {
     };
 }
 
+function abortableFetchStub() {
+    return function (_unusedUrl, options) {
+        return new Promise((_unusedResolve, reject) => {
+            options.signal.addEventListener('abort', () => {
+                const error = new Error('aborted');
+                error.name = 'AbortError';
+                reject(error);
+            });
+        });
+    };
+}
+
+const TEST_POINTS = [
+    {lat: 55.1, lng: 37.2},
+    {lat: 55.3, lng: 37.4},
+];
+
 suite('Routing polyline decoder');
 
 test('decodes an empty shape', function () {
@@ -64,12 +82,9 @@ suite('Valhalla routing request');
 
 test('builds a request with neutral options mapped to costing options', function () {
     const request = buildRouteRequest({
-        points: [
-            {lat: 55.1, lng: 37.2},
-            {lat: 55.3, lng: 37.4},
-        ],
+        points: TEST_POINTS,
         profile: 'driving',
-        options: {avoidTolls: true, avoidUnpaved: false},
+        options: {avoidTolls: true, avoidUnpaved: true, preferShortest: true},
     });
     assert.deepEqual(request.locations, [
         {lat: 55.1, lon: 37.2},
@@ -77,28 +92,32 @@ test('builds a request with neutral options mapped to costing options', function
     ]);
     assert.equal(request.costing, 'auto');
     assert.equal(request.units, 'kilometers');
-    assert.deepEqual(request.costing_options, {auto: {use_tolls: 0, exclude_unpaved: false}});
+    assert.deepEqual(request.costing_options, {
+        auto: {use_tolls: 0, exclude_unpaved: true, shortest: true},
+    });
+});
+
+PROFILES.forEach(({id}) => {
+    test(`builds a request for profile ${id}`, function () {
+        const request = buildRouteRequest({points: TEST_POINTS, profile: id, options: {}});
+        assert.isString(request.costing);
+        assert.deepEqual(request.costing_options, {[request.costing]: {}});
+    });
 });
 
 suite('Valhalla costing options');
 
 [
-    ['driving', {}, {auto: {use_tolls: 0.5, exclude_unpaved: false}}],
-    ['driving', {avoidTolls: true, avoidUnpaved: true}, {auto: {use_tolls: 0, exclude_unpaved: true}}],
-    [
-        'driving',
-        {useRoads: 0.2, useHills: 0.8, preferShortest: true},
-        {auto: {use_tolls: 0.5, exclude_unpaved: false, use_roads: 0.2, use_hills: 0.8, shortest: true}},
-    ],
+    ['driving', {}, {auto: {}}],
+    ['driving', {avoidTolls: true}, {auto: {use_tolls: 0}}],
+    ['driving', {avoidUnpaved: true}, {auto: {exclude_unpaved: true}}],
+    ['driving', {preferShortest: true}, {auto: {shortest: true}}],
+    ['motorcycle', {}, {motorcycle: {}}],
     ['motorcycle', {avoidTolls: true, avoidUnpaved: true}, {motorcycle: {use_tolls: 0, use_trails: 0}}],
-    ['motorcycle', {}, {motorcycle: {use_tolls: 0.5, use_trails: 0.5}}],
-    ['cycling', {avoidTolls: true}, {bicycle: {}}],
-    [
-        'cycling',
-        {useRoads: 0.9, useHills: 0.1, avoidBadSurfaces: 1, bicycleType: 'Mountain', preferShortest: true},
-        {bicycle: {use_roads: 0.9, use_hills: 0.1, avoid_bad_surfaces: 1, bicycle_type: 'Mountain', use_distance: 1}},
-    ],
-    ['walking', {avoidTolls: true, avoidUnpaved: true, useHills: 0.5}, {pedestrian: {}}],
+    ['cycling', {avoidTolls: true, avoidUnpaved: true}, {bicycle: {}}],
+    ['cycling', {preferShortest: true}, {bicycle: {shortest: true}}],
+    ['walking', {avoidTolls: true}, {pedestrian: {}}],
+    ['walking', {preferShortest: true}, {pedestrian: {shortest: true}}],
 ].forEach(([profile, options, expected]) => {
     test(`maps ${profile} options to Valhalla costing`, function () {
         assert.deepEqual(buildCostingOptions(profile, options), expected);
@@ -130,10 +149,7 @@ test('requests a route and returns engine-neutral geometry', async function () {
     try {
         const provider = new ValhallaProvider({url: 'https://routing.example/route'});
         const route = await provider.route({
-            points: [
-                {lat: 55.1, lng: 37.2},
-                {lat: 55.3, lng: 37.4},
-            ],
+            points: TEST_POINTS,
             profile: 'driving',
             options: {avoidTolls: true},
         });
@@ -153,7 +169,7 @@ test('requests a route and returns engine-neutral geometry', async function () {
             {lat: 55.3, lon: 37.4},
         ]);
         assert.equal(request.costing, 'auto');
-        assert.deepEqual(request.costing_options, {auto: {use_tolls: 0, exclude_unpaved: false}});
+        assert.deepEqual(request.costing_options, {auto: {use_tolls: 0}});
     } finally {
         restoreFetch();
     }
@@ -177,14 +193,7 @@ test('appends an api key when configured', async function () {
     });
     try {
         const provider = new ValhallaProvider({url: 'https://routing.example/route', apiKey: 'secret key'});
-        await provider.route({
-            points: [
-                {lat: 55.1, lng: 37.2},
-                {lat: 55.3, lng: 37.4},
-            ],
-            profile: 'walking',
-            options: {},
-        });
+        await provider.route({points: TEST_POINTS, profile: 'walking', options: {}});
         assert.include(requestedUrl, '&api_key=secret%20key');
     } finally {
         restoreFetch();
@@ -199,14 +208,7 @@ test('throws when the service responds with an error status', async function () 
         const provider = new ValhallaProvider({url: 'https://routing.example/route'});
         let caughtError = null;
         try {
-            await provider.route({
-                points: [
-                    {lat: 55.1, lng: 37.2},
-                    {lat: 55.3, lng: 37.4},
-                ],
-                profile: 'driving',
-                options: {},
-            });
+            await provider.route({points: TEST_POINTS, profile: 'driving', options: {}});
         } catch (error) {
             caughtError = error;
         }
@@ -230,19 +232,107 @@ test('throws when the service reports a routing error', async function () {
         const provider = new ValhallaProvider({url: 'https://routing.example/route'});
         let caughtError = null;
         try {
-            await provider.route({
-                points: [
-                    {lat: 55.1, lng: 37.2},
-                    {lat: 55.3, lng: 37.4},
-                ],
-                profile: 'driving',
-                options: {},
-            });
+            await provider.route({points: TEST_POINTS, profile: 'driving', options: {}});
         } catch (error) {
             caughtError = error;
         }
         assert.instanceOf(caughtError, Error);
         assert.include(caughtError.message, 'No path could be found');
+    } finally {
+        restoreFetch();
+    }
+});
+
+test('throws when the route is empty', async function () {
+    const restoreFetch = stubFetch(async function () {
+        return {
+            ok: true,
+            json: async function () {
+                return {
+                    trip: {
+                        summary: {length: 0, time: 0},
+                        legs: [{shape: ''}],
+                    },
+                };
+            },
+        };
+    });
+    try {
+        const provider = new ValhallaProvider({url: 'https://routing.example/route'});
+        let caughtError = null;
+        try {
+            await provider.route({points: TEST_POINTS, profile: 'driving', options: {}});
+        } catch (error) {
+            caughtError = error;
+        }
+        assert.instanceOf(caughtError, Error);
+        assert.include(caughtError.message, 'empty route');
+    } finally {
+        restoreFetch();
+    }
+});
+
+test('throws when the route summary is missing', async function () {
+    const restoreFetch = stubFetch(async function () {
+        return {
+            ok: true,
+            json: async function () {
+                return {trip: {legs: [{shape: 'AA'}]}};
+            },
+        };
+    });
+    try {
+        const provider = new ValhallaProvider({url: 'https://routing.example/route'});
+        let caughtError = null;
+        try {
+            await provider.route({points: TEST_POINTS, profile: 'driving', options: {}});
+        } catch (error) {
+            caughtError = error;
+        }
+        assert.instanceOf(caughtError, Error);
+        assert.include(caughtError.message, 'no route summary');
+    } finally {
+        restoreFetch();
+    }
+});
+
+test('times out a hanging request', async function () {
+    const restoreFetch = stubFetch(abortableFetchStub());
+    try {
+        const provider = new ValhallaProvider({url: 'https://routing.example/route', timeout: 20});
+        let caughtError = null;
+        try {
+            await provider.route({points: TEST_POINTS, profile: 'driving', options: {}});
+        } catch (error) {
+            caughtError = error;
+        }
+        assert.instanceOf(caughtError, Error);
+        assert.include(caughtError.message, 'timed out');
+    } finally {
+        restoreFetch();
+    }
+});
+
+test('forwards an abort from the caller', async function () {
+    const restoreFetch = stubFetch(abortableFetchStub());
+    try {
+        const provider = new ValhallaProvider({url: 'https://routing.example/route', timeout: 5000});
+        const controller = new AbortController();
+        const promise = provider.route({
+            points: TEST_POINTS,
+            profile: 'driving',
+            options: {},
+            signal: controller.signal,
+        });
+        controller.abort();
+        let caughtError = null;
+        try {
+            await promise;
+        } catch (error) {
+            caughtError = error;
+        }
+        assert.instanceOf(caughtError, Error);
+        assert.equal(caughtError.name, 'AbortError');
     } finally {
         restoreFetch();
     }
@@ -257,4 +347,16 @@ test('creates the configured provider', function () {
 
 test('rejects an unknown provider', function () {
     assert.throws(() => createRoutingProvider({provider: 'osrm'}), /Unknown routing provider/u);
+});
+
+test('creates a registered provider', function () {
+    class StubProvider {
+        constructor(settings) {
+            this.settings = settings;
+        }
+    }
+    registerRoutingProvider('stub', StubProvider);
+    const provider = createRoutingProvider({provider: 'stub', url: 'https://routing.example/route'});
+    assert.instanceOf(provider, StubProvider);
+    assert.equal(provider.settings.url, 'https://routing.example/route');
 });

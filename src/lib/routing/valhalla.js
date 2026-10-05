@@ -1,56 +1,45 @@
 import {decodePolyline} from './polyline';
 
-// Application-level profile names mapped to Valhalla costing models.
-const PROFILES = {
+// Application-level profile ids mapped to Valhalla costing models.
+const COSTING_BY_PROFILE = {
     driving: 'auto',
     cycling: 'bicycle',
     motorcycle: 'motorcycle',
     walking: 'pedestrian',
 };
 
+const DEFAULT_TIMEOUT = 30000;
+
 function getCosting(profile) {
-    const costing = PROFILES[profile];
+    const costing = COSTING_BY_PROFILE[profile];
     if (!costing) {
         throw new Error(`Unknown routing profile: ${profile}`);
     }
     return costing;
 }
 
-// Maps engine-neutral route options to Valhalla costing_options.
-// Dynamic costing (use_roads, use_hills, avoid_bad_surfaces, bicycle_type, shortest/use_distance)
-// is the main lever against absurd detours.
+// Maps engine-neutral route options to Valhalla costing_options. Only options requested by the
+// caller are sent, so engine defaults are not overridden:
+// - avoidTolls (auto, motorcycle): use_tolls = 0
+// - avoidUnpaved (auto, motorcycle): exclude_unpaved = true / use_trails = 0
+// - preferShortest (all profiles): shortest = true
 function buildCostingOptions(profile, options = {}) {
     const costing = getCosting(profile);
     const costingOptions = {};
-    if (costing === 'auto') {
-        costingOptions.use_tolls = options.avoidTolls ? 0 : 0.5; // eslint-disable-line camelcase
-        costingOptions.exclude_unpaved = Boolean(options.avoidUnpaved); // eslint-disable-line camelcase
-    } else if (costing === 'motorcycle') {
-        costingOptions.use_tolls = options.avoidTolls ? 0 : 0.5; // eslint-disable-line camelcase
-        costingOptions.use_trails = options.avoidUnpaved ? 0 : 0.5; // eslint-disable-line camelcase
-    }
-    if (costing === 'auto' || costing === 'motorcycle' || costing === 'bicycle') {
-        if (options.useRoads !== undefined) {
-            costingOptions.use_roads = options.useRoads; // eslint-disable-line camelcase
+    if (costing === 'auto' || costing === 'motorcycle') {
+        if (options.avoidTolls) {
+            costingOptions.use_tolls = 0; // eslint-disable-line camelcase
         }
-        if (options.useHills !== undefined) {
-            costingOptions.use_hills = options.useHills; // eslint-disable-line camelcase
-        }
-        if (options.preferShortest) {
-            if (costing === 'bicycle') {
-                costingOptions.use_distance = 1; // eslint-disable-line camelcase
+        if (options.avoidUnpaved) {
+            if (costing === 'auto') {
+                costingOptions.exclude_unpaved = true; // eslint-disable-line camelcase
             } else {
-                costingOptions.shortest = true;
+                costingOptions.use_trails = 0; // eslint-disable-line camelcase
             }
         }
     }
-    if (costing === 'bicycle') {
-        if (options.avoidBadSurfaces !== undefined) {
-            costingOptions.avoid_bad_surfaces = options.avoidBadSurfaces; // eslint-disable-line camelcase
-        }
-        if (options.bicycleType) {
-            costingOptions.bicycle_type = options.bicycleType; // eslint-disable-line camelcase
-        }
+    if (options.preferShortest) {
+        costingOptions.shortest = true;
     }
     return {[costing]: costingOptions};
 }
@@ -73,6 +62,38 @@ function buildUrl(baseUrl, request, apiKey) {
     return url;
 }
 
+async function fetchWithTimeout(url, {signal, timeout}) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, timeout);
+    function abort() {
+        controller.abort();
+    }
+    if (signal) {
+        if (signal.aborted) {
+            controller.abort();
+        } else {
+            signal.addEventListener('abort', abort);
+        }
+    }
+    try {
+        return await fetch(url, {signal: controller.signal});
+    } catch (error) {
+        if (timedOut) {
+            throw new Error('Routing service request timed out');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+        if (signal) {
+            signal.removeEventListener('abort', abort);
+        }
+    }
+}
+
 function parseTrip(data) {
     const trip = data && data.trip;
     if (!trip || !Array.isArray(trip.legs) || !trip.legs.length) {
@@ -83,7 +104,13 @@ function parseTrip(data) {
     legPoints.forEach((points, index) => {
         coordinates = coordinates.concat(index === 0 ? points : points.slice(1));
     });
-    const summary = trip.summary || {};
+    if (!coordinates.length) {
+        throw new Error('Routing service returned an empty route');
+    }
+    const summary = trip.summary;
+    if (!summary || typeof summary.length !== 'number' || typeof summary.time !== 'number') {
+        throw new Error('Routing service returned no route summary');
+    }
     return {
         geometry: {type: 'LineString', coordinates},
         distance: summary.length * 1000,
@@ -95,6 +122,7 @@ class ValhallaProvider {
     constructor(settings = {}) {
         this._url = settings.url;
         this._apiKey = settings.apiKey || null;
+        this._timeout = settings.timeout || DEFAULT_TIMEOUT;
     }
 
     async route({points, profile, options, signal}) {
@@ -102,7 +130,10 @@ class ValhallaProvider {
             throw new Error('Routing service URL is not configured');
         }
         const request = buildRouteRequest({points, profile, options});
-        const response = await fetch(buildUrl(this._url, request, this._apiKey), {signal});
+        const response = await fetchWithTimeout(buildUrl(this._url, request, this._apiKey), {
+            signal,
+            timeout: this._timeout,
+        });
         if (!response.ok) {
             throw new Error(`Routing service returned ${response.status}`);
         }
