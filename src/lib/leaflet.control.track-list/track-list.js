@@ -32,7 +32,7 @@ import {parseNktkSequence} from './lib/parsers/nktk';
 import * as coordFormats from '~/lib/leaflet.control.coordinates/formats';
 import {polygonArea} from '~/lib/polygon-area';
 import {polylineHasSelfIntersections} from '~/lib/polyline-selfintersects';
-import {clonePointMeta, cloneLatLngWithMeta, toLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
+import {clonePointMeta, toLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 const TRACKLIST_TRACK_COLORS = ['#77f', '#f95', '#0ff', '#f77', '#f7f', '#ee5'];
 
@@ -96,6 +96,16 @@ function unwrapLatLngsCrossing180Meridian(latngs) {
         prevUnwrapped = lastUnwrapped;
     }
     return unwrapped;
+}
+
+function markerToSourcePoint(marker) {
+    return {
+        lat: marker.latlng.lat,
+        lng: marker.latlng.lng,
+        alt: marker.latlng.alt,
+        name: marker.label,
+        meta: marker.meta,
+    };
 }
 
 function closestPointToLineSegment(latlngs, segmentIndex, point) {
@@ -641,23 +651,16 @@ L.Control.TrackList = L.Control.extend({
 
         duplicateTrack: function(track) {
             const segments = this.getTrackPolylines(track).map((line) =>
-                line.getLatLngs().map((latlng) => cloneLatLngWithMeta(latlng))
+                line.getLatLngs().map((latlng) => latlng.clone())
             );
-            const points = this.getTrackPoints(track)
-                .map((point) => ({
-                    lat: point.latlng.lat,
-                    lng: point.latlng.lng,
-                    alt: point.latlng.alt,
-                    name: point.label,
-                    meta: point.meta,
-                }));
+            const points = this.getTrackPoints(track).map(markerToSourcePoint);
             this.addTrack({name: track.name(), tracks: segments, points});
         },
 
         reverseTrackSegment: function(trackSegment) {
             trackSegment.stopDrawingLine();
             var latlngs = trackSegment.getLatLngs()
-                .map((latlng) => cloneLatLngWithMeta(latlng))
+                .map((latlng) => latlng.clone())
                 .reverse();
             var isEdited = (this._editedLine === trackSegment);
             this.deleteTrackSegment(trackSegment);
@@ -922,8 +925,8 @@ L.Control.TrackList = L.Control.extend({
         joinTrackSegments: function(newSegment, joinToStart) {
             this.hideLineCursor();
             var originalSegment = this._editedLine;
-            var latlngs = originalSegment.getLatLngs().map((latlng) => cloneLatLngWithMeta(latlng)),
-                latngs2 = newSegment.getLatLngs().map((latlng) => cloneLatLngWithMeta(latlng));
+            var latlngs = originalSegment.getLatLngs().map((latlng) => latlng.clone()),
+                latngs2 = newSegment.getLatLngs().map((latlng) => latlng.clone());
             if (joinToStart === this._lineJoinFromStart) {
                 latngs2.reverse();
             }
@@ -1298,16 +1301,16 @@ L.Control.TrackList = L.Control.extend({
 
         splitTrackSegment: function(trackSegment, nodeIndex, latlng) {
             var latlngs = trackSegment.getLatLngs();
-            latlngs = latlngs.map((latlng) => cloneLatLngWithMeta(latlng));
+            latlngs = latlngs.map((latlng) => latlng.clone());
             var latlngs1 = latlngs.slice(0, nodeIndex + 1),
                 latlngs2 = latlngs.slice(nodeIndex + 1);
             if (latlng) {
                 latlng = closestPointToLineSegment(latlngs, nodeIndex, latlng);
-                latlngs1.push(cloneLatLngWithMeta(latlng));
+                latlngs1.push(latlng.clone());
             } else {
                 latlng = latlngs[nodeIndex];
             }
-            latlngs2.unshift(cloneLatLngWithMeta(latlng));
+            latlngs2.unshift(latlng.clone());
             this.deleteTrackSegment(trackSegment);
             var segment1 = this.addTrackSegment(trackSegment._parentTrack, latlngs1);
             this.addTrackSegment(trackSegment._parentTrack, latlngs2);
@@ -1323,7 +1326,7 @@ L.Control.TrackList = L.Control.extend({
 
         newTrackFromSegment: function(trackSegment) {
             var srcNodes = trackSegment.getLatLngs(),
-                newNodes = srcNodes.map((latlng) => cloneLatLngWithMeta(latlng));
+                newNodes = srcNodes.map((latlng) => latlng.clone());
             this.addTrack({name: "New track", tracks: [newNodes]});
         },
 
@@ -1547,16 +1550,10 @@ L.Control.TrackList = L.Control.extend({
 
             for (const track of tracks) {
                 for (let segment of this.getTrackPolylines(track)) {
-                    const points = segment.getFixedLatLngs().map((latlng) => cloneLatLngWithMeta(latlng));
+                    const points = segment.getFixedLatLngs().map((latlng) => latlng.clone());
                     newTrackSegments.push(points);
                 }
-                const points = this.getTrackPoints(track).map((point) => ({
-                    lat: point.latlng.lat,
-                    lng: point.latlng.lng,
-                    alt: point.latlng.alt,
-                    name: point.label,
-                    meta: point.meta,
-                }));
+                const points = this.getTrackPoints(track).map(markerToSourcePoint);
                 newTrackPoints.push(...points);
             }
 

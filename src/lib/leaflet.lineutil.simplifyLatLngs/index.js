@@ -1,5 +1,5 @@
 import L from 'leaflet';
-import {cloneLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
+import {toLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 L.LineUtil.simplifyLatlngs = function simplifyLatlngs(points, tolerance) {
     function latlngToXy(p) {
@@ -11,13 +11,8 @@ L.LineUtil.simplifyLatlngs = function simplifyLatlngs(points, tolerance) {
     }
 
     function xyToLatlng(p) {
-        if (p.src && (p.src.meta || p.src.alt !== undefined)) {
-            return cloneLatLngWithMeta(p.src);
-        }
-        return {
-            lat: p.y,
-            lng: p.x
-        };
+        // L.LineUtil.simplify returns a subset of the input objects, so p.src points to the original point
+        return toLatLngWithMeta(p.src || {lat: p.y, lng: p.x});
     }
 
     points = points.map(latlngToXy);

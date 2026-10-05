@@ -1,5 +1,4 @@
 import L from "leaflet";
-import {wrapLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 function getSegmentSplitPointLat(latLng1, latLng2, lng) {
     const deltaLat = latLng2.lat - latLng1.lat;
@@ -9,7 +8,7 @@ function getSegmentSplitPointLat(latLng1, latLng2, lng) {
 
 function splitLineAt180Meridian(latLngs) {
     // this function also creates new LatLng object for all elements
-    const wrappedLatLngs = latLngs.map((ll) => wrapLatLngWithMeta(ll));
+    const wrappedLatLngs = latLngs.map((ll) => ll.wrap());
     const newLines = [];
     if (latLngs.length < 2) {
         return newLines;

@@ -13,19 +13,32 @@ import gpxFixture from './track_load_data/files/gpx_metadata_roundtrip.gpx';
 const OSMAND_NS = 'https://osmand.net';
 const GPXTPX_NS = 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1';
 
+const OSMAND_COLOR_EXTENSION = {
+    name: 'osmand:color',
+    attributes: {},
+    namespaces: {osmand: OSMAND_NS},
+    children: ['#ff0000'],
+};
+const OSMAND_ICON_EXTENSION = {
+    name: 'osmand:icon',
+    attributes: {},
+    namespaces: {osmand: OSMAND_NS},
+    children: ['special_star'],
+};
+const GPXTPX_HR_EXTENSION = {
+    name: 'gpxtpx:TrackPointExtension',
+    attributes: {},
+    namespaces: {gpxtpx: GPXTPX_NS},
+    children: [
+        {
+            name: 'gpxtpx:hr',
+            attributes: {},
+            namespaces: {gpxtpx: GPXTPX_NS},
+            children: ['142'],
+        },
+    ],
+};
 const OSMAND_COLOR_XML = `<osmand:color xmlns:osmand="${OSMAND_NS}">#ff0000</osmand:color>`;
-const OSMAND_ICON_XML = `<osmand:icon xmlns:osmand="${OSMAND_NS}">special_star</osmand:icon>`;
-const GPXTPX_HR_XML =
-    `<gpxtpx:TrackPointExtension xmlns:gpxtpx="${GPXTPX_NS}">` +
-    '<gpxtpx:hr>142</gpxtpx:hr></gpxtpx:TrackPointExtension>';
-
-function canonicalXml(xml) {
-    const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    if (!doc || doc.documentElement.nodeName === 'parsererror') {
-        return xml;
-    }
-    return new XMLSerializer().serializeToString(doc.documentElement);
-}
 
 function clean(value) {
     if (Array.isArray(value)) {
@@ -44,11 +57,7 @@ function clean(value) {
 }
 
 function normalizePoint(point) {
-    const result = clean({lat: point.lat, lng: point.lng, alt: point.alt, meta: point.meta});
-    if (result.meta && result.meta.extensions) {
-        result.meta.extensions = result.meta.extensions.map(canonicalXml);
-    }
-    return result;
+    return clean({lat: point.lat, lng: point.lng, alt: point.alt, meta: point.meta});
 }
 
 function normalizeWaypoint(point) {
@@ -81,12 +90,7 @@ function exportParsedGeodata(geodata) {
 // The track list control needs a map only for rendering, the data model works without it
 function createTrackListWithoutMap() {
     const trackList = new L.Control.TrackList();
-    trackList.map = {addLayer: () => null, removeLayer: () => null};
-    trackList._markerLayer = {
-        addMarkers: () => null,
-        removeMarkers: () => null,
-        updateMarkers: () => null,
-    };
+    trackList.onTrackVisibilityChanged = () => null;
     trackList.scrollListToTrack = () => null;
     return trackList;
 }
@@ -104,14 +108,14 @@ test('parses waypoint metadata', function () {
         meta: {
             ele: '123.4',
             time: '2020-01-02T03:04:05Z',
-            name: 'Waypoint & один',
             cmt: 'Комментарий',
             desc: 'Описание <test>',
+            src: 'fixture source',
             link: {href: 'https://example.com/wpt', text: 'Ссылка', type: 'text/html'},
             sym: 'Flag, Blue',
             type: 'user',
             attributes: {'data-source': 'fixture'},
-            extensions: [canonicalXml(OSMAND_COLOR_XML), canonicalXml(OSMAND_ICON_XML)],
+            extensions: [OSMAND_COLOR_EXTENSION, OSMAND_ICON_EXTENSION],
         },
     });
     assert.deepEqual(normalizeWaypoint(geodata.points[1]), {
@@ -119,7 +123,6 @@ test('parses waypoint metadata', function () {
         lng: 28.2,
         name: 'Plain waypoint',
         symbol_name: null,
-        meta: {name: 'Plain waypoint'},
     });
 });
 
@@ -138,8 +141,9 @@ test('parses trackpoint and routepoint metadata', function () {
             link: {href: 'https://example.com/1', text: 'one', type: 'text/html'},
             sym: 'Dot',
             type: 't1',
+            hdop: '0.9',
             attributes: {'data-source': 'fixture'},
-            extensions: [canonicalXml(GPXTPX_HR_XML)],
+            extensions: [GPXTPX_HR_EXTENSION],
         },
     });
     assert.deepEqual(normalizePoint(geodata.tracks[0][2]), {
@@ -181,7 +185,7 @@ test('track list model round trip preserves metadata', async function () {
 
     const firstTrackPoint = trackList.getTrackPolylines(track)[0].getLatLngs()[0];
     assert.equal(firstTrackPoint.meta.desc, 'описание <1>');
-    assert.deepEqual(firstTrackPoint.meta.extensions.map(canonicalXml), [canonicalXml(GPXTPX_HR_XML)]);
+    assert.deepEqual(firstTrackPoint.meta.extensions, [GPXTPX_HR_EXTENSION]);
     const firstWaypoint = trackList.getTrackPoints(track)[0];
     assert.equal(firstWaypoint.meta.desc, 'Описание <test>');
     assert.equal(firstWaypoint.latlng.alt, 123.4);
@@ -205,5 +209,7 @@ test('parses files with undeclared namespace prefixes using legacy fallback', fu
         '</trkseg></trk></gpx>';
     const geodata = parseGpx(txt, 'test')[0];
     assert.equal(geodata.tracks[0][0].alt, 3);
-    assert.deepEqual(geodata.tracks[0][0].meta.extensions, ['<osmand_color>red</osmand_color>']);
+    assert.deepEqual(geodata.tracks[0][0].meta.extensions, [
+        {name: 'osmand_color', attributes: {}, namespaces: {}, children: ['red']},
+    ]);
 });

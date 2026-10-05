@@ -8,6 +8,7 @@
         <name>Waypoint &amp; один</name>
         <cmt>Комментарий</cmt>
         <desc>Описание &lt;test&gt;</desc>
+        <src>fixture source</src>
         <link href="https://example.com/wpt"><text>Ссылка</text><type>text/html</type></link>
         <sym>Flag, Blue</sym>
         <type>user</type>
@@ -31,6 +32,7 @@
                 <link href="https://example.com/1"><text>one</text><type>text/html</type></link>
                 <sym>Dot</sym>
                 <type>t1</type>
+                <hdop>0.9</hdop>
                 <extensions>
                     <gpxtpx:TrackPointExtension>
                         <gpxtpx:hr>142</gpxtpx:hr>

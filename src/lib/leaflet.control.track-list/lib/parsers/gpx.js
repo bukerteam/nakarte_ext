@@ -1,158 +1,19 @@
-import {decode as utf8_decode} from 'utf8';
 import {xmlGetNodeText} from './xmlUtils';
 import stripBom from '~/lib/stripBom';
-
-// Simple text elements of GPX wptType that are kept as is
-const POINT_TEXT_ELEMENTS = ['name', 'cmt', 'desc', 'sym', 'type'];
+import {decodeText, getElementsByLocalName, parsePointElement} from './gpx_utils';
 
 function parseGpx(txt, name, preferNameFromFile) {
     var error;
 
-    function getElementText(element) {
-        const text = xmlGetNodeText(element);
-        return text === null ? null : text.trim();
+    function setError() {
+        error = 'CORRUPT';
     }
 
-    function decodeText(text) {
-        if (text === null || text === undefined) {
-            return text;
-        }
-        try {
-            return utf8_decode(text);
-        } catch (e) {
-            return text;
-        }
-    }
-
-    function getElementsByLocalName(root, localName) {
-        return root.getElementsByTagNameNS('*', localName);
-    }
-
-    function getChildElements(element) {
-        return Array.prototype.slice.call(element.childNodes)
-            .filter((node) => node.nodeType === 1);
-    }
-
-    function removeInsignificantWhitespace(node) {
-        for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType === 3) {
-                if (child.nodeValue.trim() === '') {
-                    node.removeChild(child);
-                }
-            } else if (child.nodeType === 1) {
-                removeInsignificantWhitespace(child);
-            }
-        }
-    }
-
-    function serializeExtensionElement(element, serializer) {
-        const clone = element.cloneNode(true);
-        removeInsignificantWhitespace(clone);
-        // The default GPX namespace is inherited by all elements of the document,
-        // there is no need to write it to every extension element
-        return serializer.serializeToString(clone)
-            .replace(/\sxmlns="http:\/\/www\.topografix\.com\/GPX\/1\/[01]"/ug, '');
-    }
-
-    function parseLinkElement(element) {
-        const link = {};
-        const href = element.getAttribute('href');
-        if (href !== null) {
-            link.href = href;
-        }
-        const text = decodeText(getElementText(getElementsByLocalName(element, 'text')[0]));
-        if (text) {
-            link.text = text;
-        }
-        const type = decodeText(getElementText(getElementsByLocalName(element, 'type')[0]));
-        if (type) {
-            link.type = type;
-        }
-        return link;
-    }
-
-    function parsePointChildElement(child, point, meta, extensions, serializer) {
-        const tag = child.localName;
-        if (tag === 'ele') {
-            const eleText = getElementText(child);
-            if (eleText !== null && eleText !== '') {
-                meta.ele = eleText;
-                const eleValue = parseFloat(eleText);
-                if (!isNaN(eleValue)) {
-                    point.alt = eleValue;
-                }
-            }
-        } else if (tag === 'time') {
-            const timeText = decodeText(getElementText(child));
-            if (timeText) {
-                meta.time = timeText;
-            }
-        } else if (tag === 'link') {
-            meta.link = parseLinkElement(child);
-        } else if (tag === 'extensions') {
-            for (const extensionElement of getChildElements(child)) {
-                extensions.push(decodeText(serializeExtensionElement(extensionElement, serializer)));
-            }
-        } else if (POINT_TEXT_ELEMENTS.includes(tag)) {
-            const text = decodeText(getElementText(child));
-            if (text) {
-                meta[tag] = text;
-            }
-        } else {
-            // Unknown elements are kept as extensions to not lose data
-            extensions.push(decodeText(serializeExtensionElement(child, serializer)));
-        }
-    }
-
-    function parsePointAttributes(point_element) {
-        if (!point_element.attributes || !point_element.attributes.length) {
-            return null;
-        }
-        const attributes = {};
-        for (const attribute of point_element.attributes) {
-            if (attribute.name !== 'lat' && attribute.name !== 'lon') {
-                attributes[attribute.name] = attribute.value;
-            }
-        }
-        if (!Object.keys(attributes).length) {
-            return null;
-        }
-        return attributes;
-    }
-
-    // Parses common properties of wpt, trkpt and rtept elements
-    function parsePointElement(point_element, serializer) {
-        var lat = parseFloat(point_element.getAttribute('lat'));
-        var lng = parseFloat(point_element.getAttribute('lon'));
-        if (isNaN(lat) || isNaN(lng)) {
-            error = 'CORRUPT';
-            return null;
-        }
-        const point = {lat: lat, lng: lng};
-        const meta = {};
-        const extensions = [];
-        for (const child of getChildElements(point_element)) {
-            parsePointChildElement(child, point, meta, extensions, serializer);
-        }
-        const attributes = parsePointAttributes(point_element);
-        if (attributes) {
-            meta.attributes = attributes;
-        }
-        if (extensions.length) {
-            meta.extensions = extensions;
-        }
-        if (Object.keys(meta).length) {
-            point.meta = meta;
-        }
-        return point;
-    }
-
-    function getSegmentPoints(segment_element, serializer) {
-        var points_elements = getElementsByLocalName(segment_element, 'trkpt');
-        var points = [];
-        for (var i = 0; i < points_elements.length; i++) {
-            var point_element = points_elements[i];
-            var point = parsePointElement(point_element, serializer);
+    function getPointsFromElements(parent, tagName) {
+        const elements = getElementsByLocalName(parent, tagName);
+        const points = [];
+        for (let i = 0; i < elements.length; i++) {
+            const point = parsePointElement(elements[i], setError);
             if (!point) {
                 break;
             }
@@ -161,66 +22,46 @@ function parseGpx(txt, name, preferNameFromFile) {
         return points;
     }
 
-    function getTrackSegments(xml, serializer) {
-        var segments = [];
-        var segments_elements = getElementsByLocalName(xml, 'trkseg');
-        for (var i = 0; i < segments_elements.length; i++) {
-            var segment_points = getSegmentPoints(segments_elements[i], serializer);
-            if (segment_points.length) {
-                segments.push(segment_points);
+    function getTrackSegments(xml) {
+        const segments = [];
+        const segment_elements = getElementsByLocalName(xml, 'trkseg');
+        for (let i = 0; i < segment_elements.length; i++) {
+            const points = getPointsFromElements(segment_elements[i], 'trkpt');
+            if (points.length) {
+                segments.push(points);
             }
         }
         return segments;
     }
 
-    function getRoutePoints(rte_element, serializer) {
-        var points_elements = getElementsByLocalName(rte_element, 'rtept');
-        var points = [];
-        for (var i = 0; i < points_elements.length; i++) {
-            var point_element = points_elements[i];
-            var point = parsePointElement(point_element, serializer);
-            if (!point) {
-                break;
-            }
-            points.push(point);
-        }
-        return points;
-    }
-
-    function getRoutes(xml, serializer) {
-        var routes = [];
-        var rte_elements = getElementsByLocalName(xml, 'rte');
-        for (var i = 0; i < rte_elements.length; i++) {
-            var rte_points = getRoutePoints(rte_elements[i], serializer);
-            if (rte_points.length) {
-                routes.push(rte_points);
+    function getRoutes(xml) {
+        const routes = [];
+        const route_elements = getElementsByLocalName(xml, 'rte');
+        for (let i = 0; i < route_elements.length; i++) {
+            const points = getPointsFromElements(route_elements[i], 'rtept');
+            if (points.length) {
+                routes.push(points);
             }
         }
         return routes;
     }
 
-    function getWaypoints(xml, serializer) {
-        var waypoint_elements = getElementsByLocalName(xml, 'wpt');
-        var waypoints = [];
-        for (var i = 0; i < waypoint_elements.length; i++) {
-            var waypoint_element = waypoint_elements[i];
-            var parsed_point = parsePointElement(waypoint_element, serializer);
+    function getWaypoints(xml) {
+        const waypoint_elements = getElementsByLocalName(xml, 'wpt');
+        const waypoints = [];
+        for (let i = 0; i < waypoint_elements.length; i++) {
+            const waypoint_element = waypoint_elements[i];
+            // The waypoint name is kept in the legacy top-level field, not in meta
+            const parsed_point = parsePointElement(waypoint_element, setError, false);
             if (!parsed_point) {
                 continue;
             }
-            var waypoint = {lat: parsed_point.lat, lng: parsed_point.lng};
+            const waypoint = {lat: parsed_point.lat, lng: parsed_point.lng};
             if (parsed_point.alt !== undefined) {
                 waypoint.alt = parsed_point.alt;
             }
-            let wptName = xmlGetNodeText(getElementsByLocalName(waypoint_element, 'name')[0]) || '';
-            try {
-                wptName = utf8_decode((wptName));
-            } catch (e) {
-                error = 'CORRUPT';
-                wptName = '__invalid point name__';
-            }
-            waypoint.name = wptName;
-            waypoint.symbol_name = xmlGetNodeText(getElementsByLocalName(waypoint_element, 'sym')[0]);
+            waypoint.name = decodeText(xmlGetNodeText(getElementsByLocalName(waypoint_element, 'name')[0]) || '');
+            waypoint.symbol_name = decodeText(xmlGetNodeText(getElementsByLocalName(waypoint_element, 'sym')[0]));
             if (parsed_point.meta) {
                 waypoint.meta = parsed_point.meta;
             }
@@ -263,16 +104,11 @@ function parseGpx(txt, name, preferNameFromFile) {
     if (getElementsByLocalName(dom, 'gpx').length === 0) {
         return null;
     }
-    const serializer = new XMLSerializer();
     if (preferNameFromFile) {
-        for (let trk of [...getElementsByLocalName(dom, 'trk')]) {
-            let trkName = getElementsByLocalName(trk, 'name')[0];
-            if (trkName) {
-                try {
-                    trkName = utf8_decode(xmlGetNodeText(trkName));
-                } catch (e) {
-                    error = 'CORRUPT';
-                }
+        for (const trk of [...getElementsByLocalName(dom, 'trk')]) {
+            const trkNameElement = getElementsByLocalName(trk, 'name')[0];
+            if (trkNameElement) {
+                const trkName = decodeText(xmlGetNodeText(trkNameElement));
                 if (trkName.length) {
                     name = trkName;
                     break;
@@ -282,8 +118,8 @@ function parseGpx(txt, name, preferNameFromFile) {
     }
     return [{
         name: name,
-        tracks: getTrackSegments(dom, serializer).concat(getRoutes(dom, serializer)),
-        points: getWaypoints(dom, serializer),
+        tracks: getTrackSegments(dom).concat(getRoutes(dom)),
+        points: getWaypoints(dom),
         error: error
     }];
 }
