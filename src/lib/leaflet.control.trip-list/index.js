@@ -107,7 +107,7 @@ const TripList = L.Control.extend({
     },
 
     showRouteMenu: function (e, trip, route) {
-        e._routePlannerHandled = true;
+        Contextmenu.markHandled(e);
         L.DomEvent.stopPropagation(e);
         new Contextmenu([
             {text: 'Rename route', callback: () => this.renameRoute(route)},

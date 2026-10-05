@@ -9,6 +9,8 @@ import './contextmenu.css';
     ]
  */
 
+const openMenu = {current: null};
+
 function isDescendant(parent, child) {
     if (!parent) {
         return false;
@@ -27,10 +29,26 @@ class Contextmenu {
         this.items = items;
     }
 
+    // A contextmenu event can be claimed by one handler so that other handlers
+    // (map controls, lists) do not open a second menu for the same right-click.
+    static markHandled(e) {
+        if (e) {
+            e._contextMenuHandled = true;
+        }
+    }
+
+    static isHandled(e) {
+        return Boolean(e && e._contextMenuHandled);
+    }
+
     show(e) {
         if (this._container) {
             return;
         }
+        if (openMenu.current && openMenu.current !== this) {
+            openMenu.current.hide();
+        }
+        openMenu.current = this;
         if (e.originalEvent) {
             e = e.originalEvent;
         }
@@ -63,6 +81,9 @@ class Contextmenu {
         }
         document.body.removeChild(this._container);
         this._container = null;
+        if (openMenu.current === this) {
+            openMenu.current = null;
+        }
 
         window.removeEventListener('keydown', this.onKeyDown, true);
         window.removeEventListener('mousedown', this.onMouseDown, true);

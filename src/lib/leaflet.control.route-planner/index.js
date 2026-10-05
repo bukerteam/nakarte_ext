@@ -145,17 +145,15 @@ const RoutePlanner = L.Control.extend({
 
     onMapContextMenu: function (e) {
         const originalEvent = e.originalEvent;
-        setTimeout(() => {
-            if (originalEvent._routePlannerHandled) {
-                return;
-            }
-            originalEvent._routePlannerHandled = true;
-            new Contextmenu([
-                {text: 'Route from', callback: () => this.setPoint('from', e.latlng)},
-                {text: 'Route to', callback: () => this.setPoint('to', e.latlng)},
-                {text: 'Route via', callback: () => this.addViaPoint(e.latlng)},
-            ]).show(e);
-        }, 0);
+        if (Contextmenu.isHandled(originalEvent)) {
+            return;
+        }
+        Contextmenu.markHandled(originalEvent);
+        new Contextmenu([
+            {text: 'Route from', callback: () => this.setPoint('from', e.latlng)},
+            {text: 'Route to', callback: () => this.setPoint('to', e.latlng)},
+            {text: 'Route via', callback: () => this.addViaPoint(e.latlng)},
+        ]).show(e);
     },
 
     onRoutePlannerPointSelect: function (e) {

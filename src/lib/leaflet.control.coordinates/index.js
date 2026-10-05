@@ -149,7 +149,7 @@ L.Control.Coordinates = L.Control.extend({
         },
 
         onMapRightClick: function(e) {
-            if (e.originalEvent?._routePlannerHandled) {
+            if (Contextmenu.isHandled(e.originalEvent)) {
                 return;
             }
             L.DomEvent.stop(e);
