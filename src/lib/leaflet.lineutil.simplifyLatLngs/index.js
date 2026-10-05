@@ -1,14 +1,19 @@
 import L from 'leaflet';
+import {cloneLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 L.LineUtil.simplifyLatlngs = function simplifyLatlngs(points, tolerance) {
     function latlngToXy(p) {
         return {
             x: p.lng,
-            y: p.lat
+            y: p.lat,
+            src: p
         };
     }
 
     function xyToLatlng(p) {
+        if (p.src && (p.src.meta || p.src.alt !== undefined)) {
+            return cloneLatLngWithMeta(p.src);
+        }
         return {
             lat: p.y,
             lng: p.x

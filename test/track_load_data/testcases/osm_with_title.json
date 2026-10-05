@@ -22,8 +22,32 @@
                 ]
             ],
             "points": [
-                {"lat": 56.5263, "lng": 28.96245, "name": "Point 1", "symbol_name": "Bar"},
-                {"lat": 56.5264, "lng": 28.96246, "name": "Точка 2", "symbol_name": "Bar"}
+                {
+                    "lat": 56.5263,
+                    "lng": 28.96245,
+                    "alt": 90.747414,
+                    "name": "Point 1",
+                    "symbol_name": "Bar",
+                    "meta": {
+                        "ele": "90.747414",
+                        "time": "2012-05-09T13:09:20Z",
+                        "name": "Point 1",
+                        "sym": "Bar"
+                    }
+                },
+                {
+                    "lat": 56.5264,
+                    "lng": 28.96246,
+                    "alt": 90.747414,
+                    "name": "Точка 2",
+                    "symbol_name": "Bar",
+                    "meta": {
+                        "ele": "90.747414",
+                        "time": "2012-05-09T13:09:40Z",
+                        "name": "Точка 2",
+                        "sym": "Bar"
+                    }
+                }
             ]
         }
     ]
