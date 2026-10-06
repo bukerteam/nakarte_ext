@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import {createLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 function shiftLongitudeToTarget(lng, targetLng) {
     if (targetLng instanceof L.LatLngBounds) {
@@ -20,7 +21,7 @@ function shiftLongitudeToTarget(lng, targetLng) {
 
 function wrapLatLngToTarget(latLng, targetLng) {
     const shift = shiftLongitudeToTarget(latLng.lng, targetLng);
-    return L.latLng(latLng.lat, latLng.lng + shift);
+    return createLatLngWithMeta(latLng.lat, latLng.lng + shift, latLng.alt, latLng.meta);
 }
 
 function wrapLatLngBoundsToTarget(latLngBounds, targetLng) {

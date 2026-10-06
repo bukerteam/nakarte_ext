@@ -1,116 +1,114 @@
-import {decode as utf8_decode} from 'utf8';
 import {xmlGetNodeText} from './xmlUtils';
 import stripBom from '~/lib/stripBom';
+import {decodeText, getElementsByLocalName, parsePointElement} from './gpx_utils';
 
 function parseGpx(txt, name, preferNameFromFile) {
     var error;
 
-    function getSegmentPoints(segment_element) {
-        var points_elements = segment_element.getElementsByTagName('trkpt');
-        var points = [];
-        for (var i = 0; i < points_elements.length; i++) {
-            var point_element = points_elements[i];
-            var lat = parseFloat(point_element.getAttribute('lat'));
-            var lng = parseFloat(point_element.getAttribute('lon'));
-            if (isNaN(lat) || isNaN(lng)) {
-                error = 'CORRUPT';
+    function setError() {
+        error = 'CORRUPT';
+    }
+
+    function getPointsFromElements(parent, tagName) {
+        const elements = getElementsByLocalName(parent, tagName);
+        const points = [];
+        for (let i = 0; i < elements.length; i++) {
+            const point = parsePointElement(elements[i], setError);
+            if (!point) {
                 break;
             }
-            points.push({lat: lat, lng: lng});
+            points.push(point);
         }
         return points;
     }
 
     function getTrackSegments(xml) {
-        var segments = [];
-        var segments_elements = xml.getElementsByTagName('trkseg');
-        for (var i = 0; i < segments_elements.length; i++) {
-            var segment_points = getSegmentPoints(segments_elements[i]);
-            if (segment_points.length) {
-                segments.push(segment_points);
+        const segments = [];
+        const segment_elements = getElementsByLocalName(xml, 'trkseg');
+        for (let i = 0; i < segment_elements.length; i++) {
+            const points = getPointsFromElements(segment_elements[i], 'trkpt');
+            if (points.length) {
+                segments.push(points);
             }
         }
         return segments;
     }
 
-    function getRoutePoints(rte_element) {
-        var points_elements = rte_element.getElementsByTagName('rtept');
-        var points = [];
-        for (var i = 0; i < points_elements.length; i++) {
-            var point_element = points_elements[i];
-            var lat = parseFloat(point_element.getAttribute('lat'));
-            var lng = parseFloat(point_element.getAttribute('lon'));
-            if (isNaN(lat) || isNaN(lng)) {
-                error = 'CORRUPT';
-                break;
-            }
-            points.push({lat: lat, lng: lng});
-        }
-        return points;
-    }
-
     function getRoutes(xml) {
-        var routes = [];
-        var rte_elements = xml.getElementsByTagName('rte');
-        for (var i = 0; i < rte_elements.length; i++) {
-            var rte_points = getRoutePoints(rte_elements[i]);
-            if (rte_points.length) {
-                routes.push(rte_points);
+        const routes = [];
+        const route_elements = getElementsByLocalName(xml, 'rte');
+        for (let i = 0; i < route_elements.length; i++) {
+            const points = getPointsFromElements(route_elements[i], 'rtept');
+            if (points.length) {
+                routes.push(points);
             }
         }
         return routes;
     }
 
     function getWaypoints(xml) {
-        var waypoint_elements = xml.getElementsByTagName('wpt');
-        var waypoints = [];
-        for (var i = 0; i < waypoint_elements.length; i++) {
-            var waypoint_element = waypoint_elements[i];
-            var waypoint = {};
-            waypoint.lat = parseFloat(waypoint_element.getAttribute('lat'));
-            waypoint.lng = parseFloat(waypoint_element.getAttribute('lon'));
-            if (isNaN(waypoint.lat) || isNaN(waypoint.lng)) {
-                error = 'CORRUPT';
+        const waypoint_elements = getElementsByLocalName(xml, 'wpt');
+        const waypoints = [];
+        for (let i = 0; i < waypoint_elements.length; i++) {
+            const waypoint_element = waypoint_elements[i];
+            // The waypoint name is kept in the legacy top-level field, not in meta
+            const parsed_point = parsePointElement(waypoint_element, setError, false);
+            if (!parsed_point) {
                 continue;
             }
-            let wptName = xmlGetNodeText(waypoint_element.getElementsByTagName('name')[0]) || '';
-            try {
-                wptName = utf8_decode((wptName));
-            } catch (e) {
-                error = 'CORRUPT';
-                wptName = '__invalid point name__';
+            const waypoint = {lat: parsed_point.lat, lng: parsed_point.lng};
+            if (parsed_point.alt !== undefined) {
+                waypoint.alt = parsed_point.alt;
             }
-            waypoint.name = wptName;
-            waypoint.symbol_name = xmlGetNodeText(waypoint_element.getElementsByTagName('sym')[0]);
+            waypoint.name = decodeText(xmlGetNodeText(getElementsByLocalName(waypoint_element, 'name')[0]) || '');
+            waypoint.symbol_name = decodeText(xmlGetNodeText(getElementsByLocalName(waypoint_element, 'sym')[0]));
+            if (parsed_point.meta) {
+                waypoint.meta = parsed_point.meta;
+            }
             waypoints.push(waypoint);
         }
         return waypoints;
     }
 
+    function parseXmlDocument(text) {
+        let dom;
+        try {
+            dom = (new DOMParser()).parseFromString(text, 'text/xml');
+        } catch (e) {
+            return null;
+        }
+        if (!dom) {
+            return null;
+        }
+        // Browsers may put the parse error either into the document element (syntax errors)
+        // or into a nested <parsererror> element (e.g. namespace errors)
+        if (dom.documentElement.nodeName === 'parsererror' || dom.getElementsByTagName('parsererror').length) {
+            return null;
+        }
+        return dom;
+    }
+
     txt = stripBom(txt);
-    // remove namespaces
-    txt = txt.replace(/<([^ >]+):([^ >]+)/ug, '<$1_$2');
-    let dom;
-    try {
-        dom = (new DOMParser()).parseFromString(txt, "text/xml");
-    } catch (e) {
+    let dom = parseXmlDocument(txt);
+    if (dom === null) {
+        // Fallback for files with undeclared or non-standard namespace prefixes:
+        // replace prefixes with underscores (legacy behaviour). Namespaces are lost in this case.
+        const txtWithoutNamespaces = txt.replace(/<([^ >]+):([^ >]+)/ug, '<$1_$2');
+        if (txtWithoutNamespaces !== txt) {
+            dom = parseXmlDocument(txtWithoutNamespaces);
+        }
+    }
+    if (dom === null) {
         return null;
     }
-    if (dom.documentElement.nodeName === 'parsererror') {
-        return null;
-    }
-    if (dom.getElementsByTagName('gpx').length === 0) {
+    if (getElementsByLocalName(dom, 'gpx').length === 0) {
         return null;
     }
     if (preferNameFromFile) {
-        for (let trk of [...dom.getElementsByTagName('trk')]) {
-            let trkName = trk.getElementsByTagName('name')[0];
-            if (trkName) {
-                try {
-                    trkName = utf8_decode(xmlGetNodeText(trkName));
-                } catch (e) {
-                    error = 'CORRUPT';
-                }
+        for (const trk of [...getElementsByLocalName(dom, 'trk')]) {
+            const trkNameElement = getElementsByLocalName(trk, 'name')[0];
+            if (trkNameElement) {
+                const trkName = decodeText(xmlGetNodeText(trkNameElement));
                 if (trkName.length) {
                     name = trkName;
                     break;

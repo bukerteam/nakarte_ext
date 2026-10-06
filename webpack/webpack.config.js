@@ -126,7 +126,7 @@ const loaders = [
         type: 'asset/inline',
     },
     {
-        test: /\.(html)(\?.*)?$/u,
+        test: /\.(html|gpx)(\?.*)?$/u,
         loader: 'raw-loader',
     },
     {
