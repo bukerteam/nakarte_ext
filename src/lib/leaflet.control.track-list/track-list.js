@@ -27,11 +27,13 @@ import md5 from 'blueimp-md5';
 import {wrapLatLngToTarget, wrapLatLngBoundsToTarget} from '~/lib/leaflet.fixes/fixWorldCopyJump';
 import {createZipFile} from '~/lib/zip-writer';
 import {splitLinesAt180Meridian} from "./lib/meridian180";
+import {PointsSelection, PointsSelectionToolbar, POINTS_ACTION} from './points-selection';
 import {ElevationProvider} from '~/lib/elevations';
 import {parseNktkSequence} from './lib/parsers/nktk';
 import * as coordFormats from '~/lib/leaflet.control.coordinates/formats';
 import {polygonArea} from '~/lib/polygon-area';
 import {polylineHasSelfIntersections} from '~/lib/polyline-selfintersects';
+import {clonePointMeta, toLatLngWithMeta} from '~/lib/leaflet.latlng-meta';
 
 const TRACKLIST_TRACK_COLORS = ['#77f', '#f95', '#0ff', '#f77', '#f7f', '#ee5'];
 
@@ -95,6 +97,16 @@ function unwrapLatLngsCrossing180Meridian(latngs) {
         prevUnwrapped = lastUnwrapped;
     }
     return unwrapped;
+}
+
+function markerToSourcePoint(marker) {
+    return {
+        lat: marker.latlng.lat,
+        lng: marker.latlng.lng,
+        alt: marker.latlng.alt,
+        name: marker.label,
+        meta: marker.meta,
+    };
 }
 
 function closestPointToLineSegment(latlngs, segmentIndex, point) {
@@ -259,6 +271,20 @@ L.Control.TrackList = L.Control.extend({
             this._markerLayer.on('markerclick markercontextmenu', this.onMarkerClick, this);
             this._markerLayer.on('markerenter', this.onMarkerEnter, this);
             this._markerLayer.on('markerleave', this.onMarkerLeave, this);
+            this._pointsSelection = new PointsSelection({
+                map: map,
+                hasOtherTracks: (track) => this.tracks().some((other) => other !== track),
+                getTrackColor: (track) => this.colors[track.color()],
+                createToolbar: (handlers) => new PointsSelectionToolbar({
+                    container: map.getContainer(),
+                    getTrackCount: () => this.tracks().length,
+                    ...handlers,
+                }),
+                onApply: (result) => this._applyPointsAction(result),
+                onActivate: () => this.fire('startedit'),
+                onTargetingChange: (targeting) => this._onPointsTargetingChange(targeting),
+            });
+            L.DomEvent.on(document, 'keydown', this._onEscPressed, this);
             map.on('resize', this._setAdaptiveHeight, this);
             setTimeout(() => this._setAdaptiveHeight(), 0);
             return container;
@@ -470,6 +496,9 @@ L.Control.TrackList = L.Control.extend({
         },
 
         onTrackVisibilityChanged: function(track) {
+            if (!track.visible()) {
+                this._pointsSelection.cancelIfSourceTrack(track);
+            }
             if (track.visible()) {
                 this.map.addLayer(track.feature);
                 this._markerLayer.addMarkers(track.markers);
@@ -610,6 +639,11 @@ L.Control.TrackList = L.Control.extend({
                 {text: 'Rename', callback: this.renameTrack.bind(this, track)},
                 {text: 'Duplicate', callback: this.duplicateTrack.bind(this, track)},
                 {text: 'Reverse', callback: this.reverseTrack.bind(this, track)},
+                () => ({
+                    text: 'Select points',
+                    callback: this.beginPointsSelection.bind(this, track),
+                    disabled: !track.markers.length,
+                }),
                 {text: 'Show elevation profile', callback: this.showElevationProfileForTrack.bind(this, track)},
                 '-',
                 {text: 'Delete', callback: this.removeTrack.bind(this, track)},
@@ -640,21 +674,17 @@ L.Control.TrackList = L.Control.extend({
 
         duplicateTrack: function(track) {
             const segments = this.getTrackPolylines(track).map((line) =>
-                line.getLatLngs().map((latlng) => [latlng.lat, latlng.lng])
+                line.getLatLngs().map((latlng) => latlng.clone())
             );
-            const points = this.getTrackPoints(track)
-                .map((point) => ({lat: point.latlng.lat, lng: point.latlng.lng, name: point.label}));
+            const points = this.getTrackPoints(track).map(markerToSourcePoint);
             this.addTrack({name: track.name(), tracks: segments, points});
         },
 
         reverseTrackSegment: function(trackSegment) {
             trackSegment.stopDrawingLine();
-            var latlngs = trackSegment.getLatLngs();
-            latlngs = latlngs.map(function(ll) {
-                    return [ll.lat, ll.lng];
-                }
-            );
-            latlngs.reverse();
+            var latlngs = trackSegment.getLatLngs()
+                .map((latlng) => latlng.clone())
+                .reverse();
             var isEdited = (this._editedLine === trackSegment);
             this.deleteTrackSegment(trackSegment);
             var newTrackSegment = this.addTrackSegment(trackSegment._parentTrack, latlngs);
@@ -806,6 +836,10 @@ L.Control.TrackList = L.Control.extend({
                 return;
             }
             const trackSegment = e.target;
+            if (this._pointsSelection.pickTarget(trackSegment._parentTrack)) {
+                L.DomEvent.stopPropagation(e);
+                return;
+            }
             if (this._lineJoinActive) {
                 L.DomEvent.stopPropagation(e);
                 this.joinTrackSegments(trackSegment, isPointCloserToStart(e.target.getLatLngs(), e.latlng));
@@ -816,6 +850,7 @@ L.Control.TrackList = L.Control.extend({
         },
 
         startEditTrackSegement: function(polyline) {
+            this._pointsSelection.cancel();
             if (this._editedLine && this._editedLine !== polyline) {
                 this.stopEditLine();
             }
@@ -839,9 +874,9 @@ L.Control.TrackList = L.Control.extend({
         _beginPointEdit: function() {
             this.stopPlacingPoint();
             this.stopEditLine();
+            this._pointsSelection.cancel();
             L.DomUtil.addClass(this._map._container, 'leaflet-point-placing');
             this.isPlacingPoint = true;
-            L.DomEvent.on(document, 'keydown', this.stopPlacingPointOnEscPressed, this);
             this.fire('startedit');
         },
 
@@ -900,9 +935,10 @@ L.Control.TrackList = L.Control.extend({
             }, 10);
         },
 
-        stopPlacingPointOnEscPressed: function(e) {
+        _onEscPressed: function(e) {
             if (e.keyCode === 27) {
                 this.stopPlacingPoint();
+                this._pointsSelection.cancel();
             }
         },
 
@@ -910,16 +946,59 @@ L.Control.TrackList = L.Control.extend({
             this.isPlacingPoint = false;
             this.trackAddingPoint(null);
             L.DomUtil.removeClass(this._map._container, 'leaflet-point-placing');
-            L.DomEvent.off(document, 'keydown', this.stopPlacingPointOnEscPressed, this);
             this.map.off('click', this.createNewPoint, this);
             this.map.off('click', this.movePoint, this);
+        },
+
+        beginPointsSelection: function(track) {
+            if (!track.markers.length) {
+                return;
+            }
+            this.stopPlacingPoint();
+            this.stopEditLine();
+            this._pointsSelection.start(track);
+        },
+
+        // Enables picking of a target track in the track list while the
+        // points selection is in the targeting mode. In this mode clicks on
+        // any row (including the source one) are consumed, so that no row
+        // action interferes with the picker.
+        _onPointsTargetingChange: function(targeting) {
+            const table = this._container.querySelector('.tracks-rows');
+            if (!table) {
+                return;
+            }
+            if (targeting) {
+                L.DomUtil.addClass(this._container, 'points-target-selecting');
+                this._targetRowClickHandler = (e) => {
+                    const row = e.target.closest('tr');
+                    if (!row) {
+                        return;
+                    }
+                    if (this._pointsSelection.pickTarget(this._findTrackByRow(row))) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }
+                };
+                table.addEventListener('click', this._targetRowClickHandler, true);
+            } else {
+                L.DomUtil.removeClass(this._container, 'points-target-selecting');
+                if (this._targetRowClickHandler) {
+                    table.removeEventListener('click', this._targetRowClickHandler, true);
+                    this._targetRowClickHandler = null;
+                }
+            }
+        },
+
+        _findTrackByRow: function(row) {
+            return this.tracks().find((track) => track.row() === row) || null;
         },
 
         joinTrackSegments: function(newSegment, joinToStart) {
             this.hideLineCursor();
             var originalSegment = this._editedLine;
-            var latlngs = originalSegment.getLatLngs(),
-                latngs2 = newSegment.getLatLngs();
+            var latlngs = originalSegment.getLatLngs().map((latlng) => latlng.clone()),
+                latngs2 = newSegment.getLatLngs().map((latlng) => latlng.clone());
             if (joinToStart === this._lineJoinFromStart) {
                 latngs2.reverse();
             }
@@ -928,10 +1007,6 @@ L.Control.TrackList = L.Control.extend({
             } else {
                 latlngs.push(...latngs2);
             }
-            latlngs = latlngs.map(function(ll) {
-                    return [ll.lat, ll.lng];
-                }
-            );
             this.deleteTrackSegment(originalSegment);
             if (originalSegment._parentTrack === newSegment._parentTrack) {
                 this.deleteTrackSegment(newSegment);
@@ -998,7 +1073,8 @@ L.Control.TrackList = L.Control.extend({
         },
 
         addTrackSegment: function(track, sourcePoints) {
-            var polyline = new TrackSegment(sourcePoints || [], {
+            const latlngs = (sourcePoints || []).map(toLatLngWithMeta);
+            var polyline = new TrackSegment(latlngs, {
                     color: this.colors[track.color()],
                     print: true
                 }
@@ -1322,11 +1398,7 @@ L.Control.TrackList = L.Control.extend({
 
         newTrackFromSegment: function(trackSegment) {
             var srcNodes = trackSegment.getLatLngs(),
-                newNodes = [],
-                i;
-            for (i = 0; i < srcNodes.length; i++) {
-                newNodes.push([srcNodes[i].lat, srcNodes[i].lng]);
-            }
+                newNodes = srcNodes.map((latlng) => latlng.clone());
             this.addTrack({name: "New track", tracks: [newNodes]});
         },
 
@@ -1431,9 +1503,12 @@ L.Control.TrackList = L.Control.extend({
 
         addPoint: function(track, srcPoint) {
             var marker = {
-                latlng: L.latLng([srcPoint.lat, srcPoint.lng]),
+                latlng: L.latLng(srcPoint.lat, srcPoint.lng, srcPoint.alt),
                 _parentTrack: track,
             };
+            if (srcPoint.meta) {
+                marker.meta = clonePointMeta(srcPoint.meta);
+            }
             this.setMarkerIcon(marker);
             this.setMarkerLabel(marker, srcPoint.name);
             track.markers.push(marker);
@@ -1441,21 +1516,48 @@ L.Control.TrackList = L.Control.extend({
             return marker;
         },
 
+        _applyPointsAction: function({action, sourceTrack, targetTrack, points}) {
+            if (action === POINTS_ACTION.DELETE) {
+                this._removeMarkers(sourceTrack, points);
+            } else {
+                const newMarkers = points.map((point) => this.addPoint(targetTrack, markerToSourcePoint(point)));
+                if (targetTrack.visible()) {
+                    this._markerLayer.addMarkers(newMarkers);
+                }
+                if (action === POINTS_ACTION.MOVE) {
+                    this._removeMarkers(sourceTrack, points);
+                }
+            }
+            this.notifyTracksChanged();
+        },
+
+        _removeMarkers: function(track, markers) {
+            this._markerLayer.removeMarkers(markers);
+            for (const marker of markers) {
+                const index = track.markers.indexOf(marker);
+                if (index > -1) {
+                    track.markers.splice(index, 1);
+                }
+            }
+        },
+
         onMarkerClick: function(e) {
+            const marker = e.marker;
+            const hasOtherTracks = this.tracks().some((t) => t !== marker._parentTrack);
             new Contextmenu([
-                    {text: e.marker.label, header: true},
+                    {text: marker.label, header: true},
                     '-',
-                    {text: 'Rename', callback: this.renamePoint.bind(this, e.marker)},
-                    {text: 'Move', callback: this.beginPointMove.bind(this, e.marker)},
-                    {text: 'Copy coordinates', callback: this.copyPointCoordinatesToClipboard.bind(this, e.marker, e)},
+                    {text: 'Rename', callback: this.renamePoint.bind(this, marker)},
+                    {text: 'Move', callback: this.beginPointMove.bind(this, marker)},
+                    {text: 'Copy coordinates', callback: this.copyPointCoordinatesToClipboard.bind(this, marker, e)},
                     '-',
                     {
                         text: 'Route from',
                         callback: () =>
                             this._map.fire('routeplanner:setpoint', {
                                 point: 'from',
-                                latlng: e.marker.latlng,
-                                label: e.marker.label,
+                                latlng: marker.latlng,
+                                label: marker.label,
                             }),
                     },
                     {
@@ -1463,8 +1565,8 @@ L.Control.TrackList = L.Control.extend({
                         callback: () =>
                             this._map.fire('routeplanner:setpoint', {
                                 point: 'to',
-                                latlng: e.marker.latlng,
-                                label: e.marker.label,
+                                latlng: marker.latlng,
+                                label: marker.label,
                             }),
                     },
                     {
@@ -1472,14 +1574,31 @@ L.Control.TrackList = L.Control.extend({
                         callback: () =>
                             this._map.fire('routeplanner:setpoint', {
                                 point: 'via',
-                                latlng: e.marker.latlng,
-                                label: e.marker.label,
+                                latlng: marker.latlng,
+                                label: marker.label,
                             }),
                     },
                     '-',
-                    {text: 'Delete', callback: this.removePoint.bind(this, e.marker)},
+                    {text: 'Delete', callback: this.removePoint.bind(this, marker)},
+                    '-',
+                    {
+                        text: 'Copy to track',
+                        callback: () => this._beginPointTargeting(marker, POINTS_ACTION.COPY),
+                        disabled: !hasOtherTracks,
+                    },
+                    {
+                        text: 'Move to track',
+                        callback: () => this._beginPointTargeting(marker, POINTS_ACTION.MOVE),
+                        disabled: !hasOtherTracks,
+                    },
                 ]
             ).show(e);
+        },
+
+        _beginPointTargeting: function(marker, action) {
+            this.stopPlacingPoint();
+            this.stopEditLine();
+            this._pointsSelection.startTargeting(marker._parentTrack, [marker], action);
         },
 
         onMarkerEnter: function(e) {
@@ -1492,10 +1611,7 @@ L.Control.TrackList = L.Control.extend({
 
         removePoint: function(marker) {
             this.stopPlacingPoint();
-            this._markerLayer.removeMarker(marker);
-            const markers = marker._parentTrack.markers;
-            const i = markers.indexOf(marker);
-            markers.splice(i, 1);
+            this._removeMarkers(marker._parentTrack, [marker]);
             this.notifyTracksChanged();
         },
 
@@ -1510,6 +1626,7 @@ L.Control.TrackList = L.Control.extend({
         },
 
         removeTrack: function(track) {
+            this._pointsSelection.cancelIfSourceTrack(track);
             track.visible(false);
             this.tracks.remove(track);
             this.notifyTracksChanged();
@@ -1576,14 +1693,10 @@ L.Control.TrackList = L.Control.extend({
 
             for (const track of tracks) {
                 for (let segment of this.getTrackPolylines(track)) {
-                    const points = segment.getFixedLatLngs().map(({lat, lng}) => ({lat, lng}));
+                    const points = segment.getFixedLatLngs().map((latlng) => latlng.clone());
                     newTrackSegments.push(points);
                 }
-                const points = this.getTrackPoints(track).map((point) => ({
-                    lat: point.latlng.lat,
-                    lng: point.latlng.lng,
-                    name: point.label
-                }));
+                const points = this.getTrackPoints(track).map(markerToSourcePoint);
                 newTrackPoints.push(...points);
             }
 
