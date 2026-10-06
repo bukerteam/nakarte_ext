@@ -27,7 +27,7 @@ import md5 from 'blueimp-md5';
 import {wrapLatLngToTarget, wrapLatLngBoundsToTarget} from '~/lib/leaflet.fixes/fixWorldCopyJump';
 import {createZipFile} from '~/lib/zip-writer';
 import {splitLinesAt180Meridian} from "./lib/meridian180";
-import {PointsSelection} from './points-selection';
+import {PointsSelection, PointsSelectionToolbar, POINTS_ACTION} from './points-selection';
 import {ElevationProvider} from '~/lib/elevations';
 import {parseNktkSequence} from './lib/parsers/nktk';
 import * as coordFormats from '~/lib/leaflet.control.coordinates/formats';
@@ -262,13 +262,17 @@ L.Control.TrackList = L.Control.extend({
             this._markerLayer.on('markerleave', this.onMarkerLeave, this);
             this._pointsSelection = new PointsSelection({
                 map: map,
-                trackListContainer: container,
                 getTrackCount: () => this.tracks().length,
                 getTrackColor: (track) => this.colors[track.color()],
-                resolveTrackFromRow: (row) => this.tracks().find((track) => track.row() === row) || null,
+                createToolbar: (handlers) => new PointsSelectionToolbar({
+                    container: map.getContainer(),
+                    ...handlers,
+                }),
                 onApply: (result) => this._applyPointsAction(result),
                 onActivate: () => this.fire('startedit'),
+                onTargetingChange: (targeting) => this._onPointsTargetingChange(targeting),
             });
+            L.DomEvent.on(document, 'keydown', this._onEscPressed, this);
             map.on('resize', this._setAdaptiveHeight, this);
             setTimeout(() => this._setAdaptiveHeight(), 0);
             return container;
@@ -824,7 +828,8 @@ L.Control.TrackList = L.Control.extend({
                 return;
             }
             const trackSegment = e.target;
-            if (this._pointsSelection.handleSegmentClick(trackSegment, e)) {
+            if (this._pointsSelection.pickTarget(trackSegment._parentTrack)) {
+                L.DomEvent.stopPropagation(e);
                 return;
             }
             if (this._lineJoinActive) {
@@ -864,7 +869,6 @@ L.Control.TrackList = L.Control.extend({
             this._pointsSelection.cancel();
             L.DomUtil.addClass(this._map._container, 'leaflet-point-placing');
             this.isPlacingPoint = true;
-            L.DomEvent.on(document, 'keydown', this.stopPlacingPointOnEscPressed, this);
             this.fire('startedit');
         },
 
@@ -923,9 +927,10 @@ L.Control.TrackList = L.Control.extend({
             }, 10);
         },
 
-        stopPlacingPointOnEscPressed: function(e) {
+        _onEscPressed: function(e) {
             if (e.keyCode === 27) {
                 this.stopPlacingPoint();
+                this._pointsSelection.cancel();
             }
         },
 
@@ -933,7 +938,6 @@ L.Control.TrackList = L.Control.extend({
             this.isPlacingPoint = false;
             this.trackAddingPoint(null);
             L.DomUtil.removeClass(this._map._container, 'leaflet-point-placing');
-            L.DomEvent.off(document, 'keydown', this.stopPlacingPointOnEscPressed, this);
             this.map.off('click', this.createNewPoint, this);
             this.map.off('click', this.movePoint, this);
         },
@@ -945,6 +949,39 @@ L.Control.TrackList = L.Control.extend({
             this.stopPlacingPoint();
             this.stopEditLine();
             this._pointsSelection.start(track);
+        },
+
+        // Enables picking of a target track in the track list while the
+        // points selection is in the targeting mode.
+        _onPointsTargetingChange: function(targeting) {
+            if (targeting) {
+                L.DomUtil.addClass(this._container, 'points-target-selecting');
+                const table = this._container.querySelector('.tracks-rows');
+                this._targetRowClickHandler = (e) => {
+                    const row = e.target.closest('tr');
+                    if (!row) {
+                        return;
+                    }
+                    if (this._pointsSelection.pickTarget(this._findTrackByRow(row))) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }
+                };
+                table.addEventListener('click', this._targetRowClickHandler, true);
+            } else {
+                L.DomUtil.removeClass(this._container, 'points-target-selecting');
+                if (this._targetRowClickHandler) {
+                    const table = this._container.querySelector('.tracks-rows');
+                    if (table) {
+                        table.removeEventListener('click', this._targetRowClickHandler, true);
+                    }
+                    this._targetRowClickHandler = null;
+                }
+            }
+        },
+
+        _findTrackByRow: function(row) {
+            return this.tracks().find((track) => track.row() === row) || null;
         },
 
         joinTrackSegments: function(newSegment, joinToStart) {
@@ -1474,7 +1511,7 @@ L.Control.TrackList = L.Control.extend({
         },
 
         _applyPointsAction: function({action, sourceTrack, targetTrack, points}) {
-            if (action === 'delete') {
+            if (action === POINTS_ACTION.DELETE) {
                 this._removeMarkers(sourceTrack, points);
             } else {
                 const newMarkers = points.map((point) => this.addPoint(targetTrack, {
@@ -1485,7 +1522,7 @@ L.Control.TrackList = L.Control.extend({
                 if (targetTrack.visible()) {
                     this._markerLayer.addMarkers(newMarkers);
                 }
-                if (action === 'move') {
+                if (action === POINTS_ACTION.MOVE) {
                     this._removeMarkers(sourceTrack, points);
                 }
             }
@@ -1515,12 +1552,12 @@ L.Control.TrackList = L.Control.extend({
                     '-',
                     {
                         text: 'Copy to track',
-                        callback: () => this._beginPointTargeting(marker, 'copy'),
+                        callback: () => this._beginPointTargeting(marker, POINTS_ACTION.COPY),
                         disabled: !hasOtherTracks,
                     },
                     {
                         text: 'Move to track',
-                        callback: () => this._beginPointTargeting(marker, 'move'),
+                        callback: () => this._beginPointTargeting(marker, POINTS_ACTION.MOVE),
                         disabled: !hasOtherTracks,
                     },
                 ]
@@ -1543,10 +1580,7 @@ L.Control.TrackList = L.Control.extend({
 
         removePoint: function(marker) {
             this.stopPlacingPoint();
-            this._markerLayer.removeMarker(marker);
-            const markers = marker._parentTrack.markers;
-            const i = markers.indexOf(marker);
-            markers.splice(i, 1);
+            this._removeMarkers(marker._parentTrack, [marker]);
             this.notifyTracksChanged();
         },
 

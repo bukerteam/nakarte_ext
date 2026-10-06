@@ -6,6 +6,12 @@ import {RectangleSelect} from '~/lib/leaflet.control.jnx/selector';
 const BOUNDS_PADDING_RATIO = 0.1;
 const MIN_BOUNDS_PADDING = 0.01;
 
+const POINTS_ACTION = {
+    DELETE: 'delete',
+    COPY: 'copy',
+    MOVE: 'move',
+};
+
 // Bounds around all points of a track with some padding, so that the points
 // are strictly inside the initial selection rectangle.
 function getPointsBounds(points) {
@@ -68,26 +74,21 @@ class PointsSelectionToolbar {
 // Interactive selection of track points. Has two mutually exclusive modes:
 // - selection: a draggable rectangle picks points of one track;
 // - targeting: the picked points are copied/moved to a track chosen by
-//   a click on a track row or on a track segment.
+//   the user; the target itself is picked by the owner (track list), which
+//   calls pickTarget() when a track is clicked.
 class PointsSelection {
-    constructor({map, trackListContainer, getTrackCount, getTrackColor, resolveTrackFromRow, onApply, onActivate}) {
+    constructor({map, getTrackCount, getTrackColor, createToolbar, onApply, onActivate, onTargetingChange}) {
         this._map = map;
-        this._trackListContainer = trackListContainer;
         this._getTrackCount = getTrackCount;
         this._getTrackColor = getTrackColor;
-        this._resolveTrackFromRow = resolveTrackFromRow;
+        this._createToolbar = createToolbar;
         this._onApply = onApply;
         this._onActivate = onActivate;
+        this._onTargetingChange = onTargetingChange;
         this._selection = null;
         this._targeting = null;
         this._highlightLayer = null;
         this._toolbar = null;
-        this._rowClickHandler = null;
-        this._onKeyDown = (e) => {
-            if (e.keyCode === 27) {
-                this.cancel();
-            }
-        };
     }
 
     start(track) {
@@ -98,7 +99,7 @@ class PointsSelection {
         const selector = new RectangleSelect(getPointsBounds(track.markers)).addTo(this._map);
         selector.on('change', this._updateSelection, this);
         this._selection = {sourceTrack: track, selector: selector, points: []};
-        this._beginInteraction();
+        this._enterMode();
         this._updateSelection();
     }
 
@@ -107,7 +108,7 @@ class PointsSelection {
         if (!points.length || this._getTrackCount() < 2) {
             return;
         }
-        this._beginInteraction();
+        this._enterMode();
         this._startTargeting(track, points, action);
     }
 
@@ -115,12 +116,11 @@ class PointsSelection {
         if (!this._selection && !this._targeting) {
             return;
         }
-        if (this._selection) {
-            this._selection.selector.off('change', this._updateSelection, this);
-            this._map.removeLayer(this._selection.selector);
-            this._selection = null;
+        this._stopSelection();
+        if (this._targeting) {
+            this._targeting = null;
+            this._onTargetingChange(false);
         }
-        this._targeting = null;
         if (this._highlightLayer) {
             this._map.removeLayer(this._highlightLayer);
             this._highlightLayer = null;
@@ -129,16 +129,7 @@ class PointsSelection {
             this._toolbar.destroy();
             this._toolbar = null;
         }
-        if (this._rowClickHandler) {
-            const table = this._trackListContainer.querySelector('.tracks-rows');
-            if (table) {
-                table.removeEventListener('click', this._rowClickHandler, true);
-            }
-            this._rowClickHandler = null;
-        }
         L.DomUtil.removeClass(this._map.getContainer(), 'leaflet-points-selecting');
-        L.DomUtil.removeClass(this._trackListContainer, 'points-target-selecting');
-        L.DomEvent.off(document, 'keydown', this._onKeyDown, this);
     }
 
     cancelIfSourceTrack(track) {
@@ -148,33 +139,41 @@ class PointsSelection {
         }
     }
 
-    // Returns true if the click was consumed by the selection.
-    handleSegmentClick(trackSegment, e) {
+    // Called by the track list when a track is clicked while a copy/move
+    // target is being chosen. Returns true if the click was consumed by
+    // the targeting mode.
+    pickTarget(track) {
         const targeting = this._targeting;
         if (!targeting) {
             return false;
         }
-        const track = trackSegment._parentTrack;
         if (track && track !== targeting.sourceTrack) {
-            L.DomEvent.stopPropagation(e);
             this._executeAction(track);
         }
         return true;
     }
 
-    _beginInteraction() {
+    _enterMode() {
         this._highlightLayer = L.featureGroup([]).addTo(this._map);
         L.DomUtil.addClass(this._map.getContainer(), 'leaflet-points-selecting');
-        L.DomEvent.on(document, 'keydown', this._onKeyDown, this);
-        this._toolbar = new PointsSelectionToolbar({
-            container: this._map.getContainer(),
+        this._toolbar = this._createToolbar({
             getTrackCount: this._getTrackCount,
             onDelete: () => this._deleteSelected(),
-            onCopy: () => this._startCopyMove('copy'),
-            onMove: () => this._startCopyMove('move'),
+            onCopy: () => this._startCopyMove(POINTS_ACTION.COPY),
+            onMove: () => this._startCopyMove(POINTS_ACTION.MOVE),
             onCancel: () => this.cancel(),
         });
         this._onActivate();
+    }
+
+    _stopSelection() {
+        const selection = this._selection;
+        if (!selection) {
+            return;
+        }
+        selection.selector.off('change', this._updateSelection, this);
+        this._map.removeLayer(selection.selector);
+        this._selection = null;
     }
 
     _updateSelection() {
@@ -207,7 +206,11 @@ class PointsSelection {
         if (!selection || !selection.points.length) {
             return;
         }
-        this._onApply({action: 'delete', sourceTrack: selection.sourceTrack, points: selection.points});
+        this._onApply({
+            action: POINTS_ACTION.DELETE,
+            sourceTrack: selection.sourceTrack,
+            points: selection.points,
+        });
         this.cancel();
     }
 
@@ -219,9 +222,7 @@ class PointsSelection {
         const {sourceTrack, points} = selection;
         // Freeze the selection: the rectangle is no longer editable, so the
         // set of points cannot change after the action was chosen.
-        selection.selector.off('change', this._updateSelection, this);
-        this._map.removeLayer(selection.selector);
-        this._selection = null;
+        this._stopSelection();
         this._startTargeting(sourceTrack, points, action);
     }
 
@@ -229,22 +230,7 @@ class PointsSelection {
         this._targeting = {sourceTrack: sourceTrack, points: points, action: action};
         this._toolbar.isTargeting(true);
         this._updateHighlights(sourceTrack, points);
-        L.DomUtil.addClass(this._trackListContainer, 'points-target-selecting');
-        const table = this._trackListContainer.querySelector('.tracks-rows');
-        this._rowClickHandler = (e) => {
-            const row = e.target.closest('tr');
-            if (!row) {
-                return;
-            }
-            const targetTrack = this._resolveTrackFromRow(row);
-            if (!targetTrack || targetTrack === sourceTrack) {
-                return;
-            }
-            e.stopPropagation();
-            e.preventDefault();
-            this._executeAction(targetTrack);
-        };
-        table.addEventListener('click', this._rowClickHandler, true);
+        this._onTargetingChange(true);
     }
 
     _executeAction(targetTrack) {
@@ -262,4 +248,4 @@ class PointsSelection {
     }
 }
 
-export {PointsSelection, getPointsBounds, filterPointsInBounds};
+export {PointsSelection, PointsSelectionToolbar, POINTS_ACTION, getPointsBounds, filterPointsInBounds};
