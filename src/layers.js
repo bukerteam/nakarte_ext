@@ -473,6 +473,28 @@ class LayerGroupWithOptions extends L.LayerGroup {
                     )
                 },
                 {
+                    title: 'MapMagic',
+                    // Ported from sikmir/nakarte@9b89db58. Unlike the source, isDefault is false:
+                    // in this fork a new default layer is auto-enabled for existing users, and
+                    // mapmagic.app publishes no tile terms of use for third-party clients.
+                    isDefault: false,
+                    layer: L.tileLayer('https://tile.mapmagic.app/{z}/{x}/{y}.png',
+                        {
+                            code: 'Mgc',
+                            isOverlay: false,
+                            maxNativeZoom: 18,
+                            scaleDependent: true,
+                            print: true,
+                            jnx: true,
+                            noCors: false,
+                            shortName: 'mapmagic',
+                            tileSize: 512,
+                            zoomOffset: -1,
+                            attribution: '<a href="https://mapmagic.app">MapMagic</a>',
+                        }
+                    )
+                },
+                {
                     title: 'OpenCycleMap',
                     isDefault: false,
                     layer: new RetinaTileLayer(
@@ -1149,6 +1171,7 @@ class LayerGroupWithOptions extends L.LayerGroup {
             title: 'OpenStreetMap alternatives',
             layers: [
                 'OpenTopoMap',
+                'MapMagic',
                 'OpenCycleMap',
                 'OSM Outdoors',
                 'mapy.cz tourist (Out of order)',
@@ -1210,6 +1233,7 @@ class LayerGroupWithOptions extends L.LayerGroup {
         'OpenStreetMap',
         'CyclOSM',
         'OpenTopoMap',
+        'MapMagic',
         'OpenCycleMap',
         'OSM Outdoors',
         'mapy.cz tourist (Out of order)',
