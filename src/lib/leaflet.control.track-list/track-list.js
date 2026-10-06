@@ -1520,11 +1520,7 @@ L.Control.TrackList = L.Control.extend({
             if (action === POINTS_ACTION.DELETE) {
                 this._removeMarkers(sourceTrack, points);
             } else {
-                const newMarkers = points.map((point) => this.addPoint(targetTrack, {
-                    name: point.label,
-                    lat: point.latlng.lat,
-                    lng: point.latlng.lng,
-                }));
+                const newMarkers = points.map((point) => this.addPoint(targetTrack, markerToSourcePoint(point)));
                 if (targetTrack.visible()) {
                     this._markerLayer.addMarkers(newMarkers);
                 }
