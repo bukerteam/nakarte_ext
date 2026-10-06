@@ -2,6 +2,7 @@ import L from 'leaflet';
 
 import Contextmenu from '~/lib/contextmenu';
 import {RoutePlanner} from '~/lib/leaflet.control.route-planner';
+import {enableRoutePlanning} from '~/lib/route-planning';
 
 const ROUTE_GEOMETRY = {
     type: 'LineString',
@@ -159,7 +160,7 @@ test('adds via points and swaps the endpoints', async function () {
         [55.755, 37.61],
         [55.76, 37.62],
     ]);
-    const viaLabel = element(planner, '.route-planner-point-via .route-planner-via-label');
+    const viaLabel = element(planner, '.route-planner-point-via .route-planner-point-label');
     assert.equal(viaLabel.textContent, 'Meeting point');
     planner.swap();
     await nextTick();
@@ -281,4 +282,108 @@ test('ignores a contextmenu event already handled by another component', functio
     map.getContainer().dispatchEvent(contextMenuEvent);
     assert.equal(document.querySelectorAll('.contextmenu').length, 0);
     map.remove();
+});
+
+test('removes a via point with the remove button and recalculates the route', async function () {
+    const map = createMap();
+    const provider = createProviderStub();
+    const planner = new RoutePlanner({provider}).addTo(map);
+    planner.onRoutePlannerPointSelect({point: 'from', latlng: L.latLng(55.75, 37.6)});
+    planner.onRoutePlannerPointSelect({point: 'to', latlng: L.latLng(55.76, 37.62)});
+    await nextTick();
+    planner.addViaPoint(L.latLng(55.755, 37.61), 'Meeting point');
+    await nextTick();
+    assert.equal(provider.requests.length, 2);
+    element(planner, '.route-planner-point-via .route-planner-point-remove').click();
+    await nextTick();
+    assert.equal(provider.requests.length, 3);
+    assert.deepEqual(requestPoints(provider.requests[2]), [
+        [55.75, 37.6],
+        [55.76, 37.62],
+    ]);
+    assert.isNull(element(planner, '.route-planner-point-via'));
+    map.remove();
+});
+
+test('removes an endpoint with the remove button and discards the route', async function () {
+    const map = createMap();
+    const provider = createProviderStub();
+    const planner = new RoutePlanner({provider}).addTo(map);
+    planner.onRoutePlannerPointSelect({point: 'from', latlng: L.latLng(55.75, 37.6)});
+    planner.onRoutePlannerPointSelect({point: 'to', latlng: L.latLng(55.76, 37.62)});
+    await nextTick();
+    element(planner, '.route-planner-point-from .route-planner-point-remove').click();
+    await nextTick();
+    assert.equal(element(planner, '.route-planner-status').textContent, 'Now choose a starting point.');
+    assert.isTrue(element(planner, '.route-planner-save').disabled);
+    assert.equal(countRouteLines(map), 0);
+    assert.equal(provider.requests.length, 1);
+    assert.include(element(planner, '.route-planner-point-from .route-planner-point-label').textContent, 'Choose');
+    map.remove();
+});
+
+test('reorders points with drag and drop', async function () {
+    const map = createMap();
+    const provider = createProviderStub();
+    const planner = new RoutePlanner({provider}).addTo(map);
+    planner.onRoutePlannerPointSelect({point: 'from', latlng: L.latLng(55.75, 37.6)});
+    planner.onRoutePlannerPointSelect({point: 'to', latlng: L.latLng(55.76, 37.62)});
+    await nextTick();
+    planner.addViaPoint(L.latLng(55.755, 37.61), 'Meeting point');
+    await nextTick();
+    const rows = planner.getContainer().querySelectorAll('.route-planner-point');
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = () => rows[0];
+    try {
+        rows[1].dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: 0, clientY: 0}));
+        document.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: 0, clientY: 40}));
+        document.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: 0, clientY: 40}));
+    } finally {
+        document.elementFromPoint = originalElementFromPoint;
+    }
+    await nextTick();
+    assert.deepEqual(requestPoints(provider.requests[provider.requests.length - 1]), [
+        [55.755, 37.61],
+        [55.75, 37.6],
+        [55.76, 37.62],
+    ]);
+    const labels = Array.from(planner.getContainer().querySelectorAll('.route-planner-point-label'));
+    assert.equal(labels[0].textContent, 'Meeting point');
+    assert.equal(
+        planner.getContainer().querySelector('.route-planner-point-via .route-planner-drag-handle').textContent,
+        '⋮'
+    );
+    map.remove();
+});
+
+test('toggles panel visibility', function () {
+    const map = createMap();
+    const planner = new RoutePlanner({provider: createProviderStub()}).addTo(map);
+    assert.isFalse(planner.isVisible());
+    planner.toggle();
+    assert.isTrue(planner.isVisible());
+    planner.toggle();
+    assert.isFalse(planner.isVisible());
+    map.remove();
+});
+
+test('opens the routes panel from the toolbar button and attaches the trips list', function () {
+    localStorage.removeItem('tripListState');
+    const map = createMap();
+    const tracklist = {
+        addTrack: function () {
+            return null;
+        },
+    };
+    const {routePlanner} = enableRoutePlanning(map, tracklist);
+    assert.isFalse(routePlanner.isVisible());
+    assert.isTrue(routePlanner.getTripsContainer().classList.contains('trip-list'));
+    assert.isNotNull(routePlanner.getTripsContainer().querySelector('.trip-list-header'));
+    const button = map.getContainer().querySelector('.leaflet-control-single-button');
+    button.click();
+    assert.isTrue(routePlanner.isVisible());
+    button.click();
+    assert.isFalse(routePlanner.isVisible());
+    map.remove();
+    localStorage.removeItem('tripListState');
 });

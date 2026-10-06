@@ -1,14 +1,5 @@
 .trip-list {
-    position: relative;
-    width: 310px;
-    box-sizing: content-box;
-    max-height: 45vh;
-    overflow: auto;
-    padding: 8px;
-    border-radius: 5px;
-    background-color: #fff;
-    box-shadow: 0 1px 5px rgb(0 0 0 / 40%);
-    font: 12px/1.4 Arial, sans-serif;
+    font: 13px/1.4 Arial, sans-serif;
 }
 
 .trip-list-header,
@@ -95,10 +86,4 @@
 .trip-list-empty {
     margin: 3px 0 0;
     color: #5f6368;
-}
-
-@media (max-width: 620px) {
-    .trip-list {
-        width: min(310px, calc(100vw - 16px));
-    }
 }

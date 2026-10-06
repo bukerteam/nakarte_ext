@@ -51,15 +51,10 @@ function serializeRoute(route) {
     };
 }
 
-const TripList = L.Control.extend({
+const TripList = L.Class.extend({
     includes: L.Mixin.Events,
 
-    options: {
-        position: 'bottomright',
-    },
-
-    initialize: function (options) {
-        L.Control.prototype.initialize.call(this, options);
+    initialize: function () {
         this._trips = [];
         this._selectedTrip = null;
         this._nextTripId = 1;
@@ -67,11 +62,11 @@ const TripList = L.Control.extend({
         this.restoreState();
     },
 
-    onAdd: function (map) {
+    attach: function (map, container) {
         this._map = map;
-        this._container = L.DomUtil.create('section', 'trip-list');
-        L.DomEvent.disableClickPropagation(this._container);
-        L.DomEvent.disableScrollPropagation(this._container);
+        this._container = container;
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
         this._trips.forEach((trip) => {
             trip.routes.forEach((route) => {
                 route.layer = this.createRouteLayer(route);
@@ -81,11 +76,10 @@ const TripList = L.Control.extend({
             });
         });
         this.render();
-        return this._container;
     },
 
-    onRemove: function () {
-        this._trips.forEach((trip) => trip.routes.forEach((route) => this._map.removeLayer(route.layer)));
+    getContainer: function () {
+        return this._container;
     },
 
     createTrip: function () {

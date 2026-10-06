@@ -12,6 +12,14 @@ function createMap() {
     return L.map(container, {center: [55.75, 37.6], zoom: 10});
 }
 
+function createTripList(map) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const tripList = new TripList();
+    tripList.attach(map, container);
+    return tripList;
+}
+
 function makeRouteData(geometry) {
     return {
         id: null,
@@ -44,13 +52,13 @@ suite('Trips list control');
 test('saves a route, persists it and restores it', function () {
     localStorage.removeItem(STORAGE_KEY);
     const map = createMap();
-    const tripList = new TripList().addTo(map);
+    const tripList = createTripList(map);
     const route = tripList.saveRoute(makeRouteData(straightLine(50)));
     assert.equal(route.id, 1);
     assert.isTrue(map.hasLayer(route.layer));
     assert.equal(storedRoutes().length, 1);
     const secondMap = createMap();
-    const secondTripList = new TripList().addTo(secondMap);
+    const secondTripList = createTripList(secondMap);
     assert.equal(secondTripList.getContainer().querySelectorAll('.trip-list-route').length, 1);
     assert.include(secondTripList.getContainer().textContent, 'Start → Finish');
     map.remove();
@@ -61,7 +69,7 @@ test('saves a route, persists it and restores it', function () {
 test('simplifies the geometry before storing it', function () {
     localStorage.removeItem(STORAGE_KEY);
     const map = createMap();
-    const tripList = new TripList().addTo(map);
+    const tripList = createTripList(map);
     tripList.saveRoute(makeRouteData(straightLine(500)));
     assert.isBelow(storedRoutes()[0].geometry.coordinates.length, 5);
     map.remove();
@@ -71,7 +79,7 @@ test('simplifies the geometry before storing it', function () {
 test('updates an existing route instead of duplicating it', function () {
     localStorage.removeItem(STORAGE_KEY);
     const map = createMap();
-    const tripList = new TripList().addTo(map);
+    const tripList = createTripList(map);
     const route = tripList.saveRoute(makeRouteData(straightLine(10)));
     const updated = tripList.saveRoute({...makeRouteData(straightLine(10)), id: route.id, distance: 3000});
     assert.equal(updated.id, route.id);
@@ -85,7 +93,7 @@ test('updates an existing route instead of duplicating it', function () {
 test('toggles route visibility and color', function () {
     localStorage.removeItem(STORAGE_KEY);
     const map = createMap();
-    const tripList = new TripList().addTo(map);
+    const tripList = createTripList(map);
     const route = tripList.saveRoute(makeRouteData(straightLine(10)));
     const visibility = tripList.getContainer().querySelector('.trip-list-route .trip-list-visibility');
     visibility.checked = false;
@@ -101,7 +109,7 @@ test('toggles route visibility and color', function () {
 test('deletes a route', function () {
     localStorage.removeItem(STORAGE_KEY);
     const map = createMap();
-    const tripList = new TripList().addTo(map);
+    const tripList = createTripList(map);
     const route = tripList.saveRoute(makeRouteData(straightLine(10)));
     const removeButton = tripList
         .getContainer()

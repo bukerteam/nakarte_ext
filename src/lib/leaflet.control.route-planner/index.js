@@ -44,20 +44,10 @@ const RoutePlanner = L.Control.extend({
         this._container = L.DomUtil.create('section', 'route-planner');
         this._container.innerHTML = `
             <header class="route-planner-header">
-                <h2>Directions</h2>
-                <button type="button" class="route-planner-close" aria-label="Close directions">×</button>
+                <h2>Routes</h2>
+                <button type="button" class="route-planner-close" aria-label="Close routes">×</button>
             </header>
-            <div class="route-planner-points">
-                <div class="route-planner-point route-planner-point-from">
-                    <span class="route-planner-point-icon">A</span>
-                    <button type="button" class="route-planner-place" data-point="from">Choose a starting point</button>
-                </div>
-                <div class="route-planner-via-points"></div>
-                <div class="route-planner-point route-planner-point-to">
-                    <span class="route-planner-point-icon">B</span>
-                    <button type="button" class="route-planner-place" data-point="to">Choose a destination</button>
-                </div>
-            </div>
+            <div class="route-planner-points"></div>
             <label class="route-planner-mode">
                 Mode
                 <select class="route-planner-profile" aria-label="Mode of transportation">
@@ -80,11 +70,11 @@ const RoutePlanner = L.Control.extend({
                 <button type="button" class="route-planner-elevation" disabled>Show elevation profile</button>
             </div>
             <p class="route-planner-status">Right-click a point on the map to set the route.</p>
+            <div class="route-planner-trips trip-list"></div>
         `;
         this._status = this._container.querySelector('.route-planner-status');
-        this._fromButton = this._container.querySelector('[data-point="from"]');
-        this._toButton = this._container.querySelector('[data-point="to"]');
-        this._viaPointsContainer = this._container.querySelector('.route-planner-via-points');
+        this._pointsContainer = this._container.querySelector('.route-planner-points');
+        this._tripsContainer = this._container.querySelector('.route-planner-trips');
         this._profileSelect = this._container.querySelector('.route-planner-profile');
         this._avoidTollsInput = this._container.querySelector('.route-planner-avoid-tolls');
         this._avoidUnpavedInput = this._container.querySelector('.route-planner-avoid-unpaved');
@@ -96,8 +86,6 @@ const RoutePlanner = L.Control.extend({
         this._container.querySelector('.route-planner-swap').addEventListener('click', this.swap.bind(this));
         this._saveButton.addEventListener('click', this.saveRoute.bind(this));
         this._elevationButton.addEventListener('click', this.toggleElevationProfile.bind(this));
-        this._fromButton.addEventListener('click', this.pickPoint.bind(this, 'from'));
-        this._toButton.addEventListener('click', this.pickPoint.bind(this, 'to'));
         this._profileSelect.addEventListener('change', this.onRoutingOptionsChange.bind(this));
         this._avoidTollsInput.addEventListener('change', this.onRoutingOptionsChange.bind(this));
         this._avoidUnpavedInput.addEventListener('change', this.onRoutingOptionsChange.bind(this));
@@ -109,6 +97,7 @@ const RoutePlanner = L.Control.extend({
         map.on('contextmenu', this.onMapContextMenu, this);
         map.on('click', this.onMapClick, this);
         map.on('routeplanner:setpoint', this.onRoutePlannerPointSelect, this);
+        map.on('resize', this.updatePanelSize, this);
         this._routeLayer.on('mousedown', this.startViaPointDrag, this);
         map.addLayer(this._routeLayer);
         map.addLayer(this._markers);
@@ -119,12 +108,17 @@ const RoutePlanner = L.Control.extend({
         map.off('contextmenu', this.onMapContextMenu, this);
         map.off('click', this.onMapClick, this);
         map.off('routeplanner:setpoint', this.onRoutePlannerPointSelect, this);
+        map.off('resize', this.updatePanelSize, this);
         this._routeLayer.off('mousedown', this.startViaPointDrag, this);
         this.stopViaPointDrag();
-        this.stopViaPointListDrag();
+        this.stopPointListDrag();
         this.hideElevationProfile();
         map.removeLayer(this._routeLayer);
         map.removeLayer(this._markers);
+    },
+
+    getTripsContainer: function () {
+        return this._tripsContainer;
     },
 
     getRoutingProvider: function () {
@@ -198,10 +192,20 @@ const RoutePlanner = L.Control.extend({
         if (this._from && this._to) {
             this.buildRoute();
         } else {
-            this._routeLayer.clearLayers();
-            this._route = null;
-            this.updateSaveButton();
-            this._status.textContent = point === 'from' ? 'Now choose a destination.' : 'Now choose a starting point.';
+            this.discardRoute(point === 'from' ? 'Now choose a destination.' : 'Now choose a starting point.');
+        }
+    },
+
+    discardRoute: function (message = null) {
+        this._request?.abort();
+        this._request = null;
+        this.hideElevationProfile();
+        this._routeLayer.clearLayers();
+        this._route = null;
+        this._projectedRoute = null;
+        this.updateSaveButton();
+        if (message) {
+            this._status.textContent = message;
         }
     },
 
@@ -257,78 +261,118 @@ const RoutePlanner = L.Control.extend({
     },
 
     updatePoints: function () {
-        this._fromButton.textContent = this._from
-            ? this._fromLabel || formatCoordinate(this._from)
-            : 'Choose a starting point';
-        this._toButton.textContent = this._to ? this._toLabel || formatCoordinate(this._to) : 'Choose a destination';
-        this.updateViaPoints();
-    },
-
-    updateViaPoints: function () {
-        this._viaPointsContainer.innerHTML = '';
-        this._viaPoints.forEach((point, index) => {
-            const row = L.DomUtil.create(
-                'div',
-                'route-planner-point route-planner-point-via',
-                this._viaPointsContainer
-            );
-            row.addEventListener('pointerdown', this.startViaPointListDrag.bind(this, index));
-            const icon = L.DomUtil.create('span', 'route-planner-point-icon', row);
-            icon.textContent = index + 1;
-            const label = L.DomUtil.create('span', 'route-planner-via-label', row);
-            label.textContent = this._viaLabels[index] || formatCoordinate(point);
-            const dragHandle = L.DomUtil.create('span', 'route-planner-drag-handle', row);
-            dragHandle.textContent = '↕';
+        this._pointsContainer.innerHTML = '';
+        this.renderPointRow({kind: 'from', icon: 'A', latlng: this._from, label: this._fromLabel});
+        this._viaPoints.forEach((latlng, index) => {
+            this.renderPointRow({
+                kind: 'via',
+                index,
+                icon: String(index + 1),
+                latlng,
+                label: this._viaLabels[index],
+            });
         });
+        this.renderPointRow({kind: 'to', icon: 'B', latlng: this._to, label: this._toLabel});
     },
 
-    startViaPointListDrag: function (index, e) {
-        if (e.button !== 0) {
+    renderPointRow: function ({kind, index, icon, latlng, label}) {
+        const row = L.DomUtil.create('div', `route-planner-point route-planner-point-${kind}`, this._pointsContainer);
+        row.dataset.pointKind = kind;
+        row.addEventListener('pointerdown', this.startPointListDrag.bind(this, row));
+        const iconElement = L.DomUtil.create('span', 'route-planner-point-icon', row);
+        iconElement.textContent = icon;
+        const labelElement = L.DomUtil.create('span', 'route-planner-point-label', row);
+        if (latlng) {
+            labelElement.textContent = label || formatCoordinate(latlng);
+        } else {
+            row.classList.add('empty');
+            labelElement.textContent = kind === 'from' ? 'Choose a starting point' : 'Choose a destination';
+        }
+        if (!latlng) {
+            return;
+        }
+        const dragHandle = L.DomUtil.create('span', 'route-planner-drag-handle', row);
+        dragHandle.textContent = '⋮';
+        dragHandle.title = 'Drag to reorder';
+        const removeButton = L.DomUtil.create('button', 'route-planner-point-remove', row);
+        removeButton.type = 'button';
+        removeButton.title = 'Remove point';
+        removeButton.textContent = '×';
+        removeButton.addEventListener('click', () => this.removePoint(kind, index));
+    },
+
+    startPointListDrag: function (row, e) {
+        if (e.button !== 0 || e.target.closest('button')) {
             return;
         }
         e.preventDefault();
-        this._viaPointListDrag = {index, startY: e.clientY};
-        this._onViaPointListDrag = this._onViaPointListDrag || this.dragViaPointList.bind(this);
-        this._onViaPointListDrop = this._onViaPointListDrop || this.finishViaPointListDrag.bind(this);
-        document.addEventListener('pointermove', this._onViaPointListDrag);
-        document.addEventListener('pointerup', this._onViaPointListDrop);
-        document.addEventListener('pointercancel', this._onViaPointListDrop);
+        row.classList.add('dragging');
+        this._pointListDrag = {row, startY: e.clientY};
+        this._onPointListDrag = this._onPointListDrag || this.dragPointList.bind(this);
+        this._onPointListDrop = this._onPointListDrop || this.finishPointListDrag.bind(this);
+        document.addEventListener('pointermove', this._onPointListDrag);
+        document.addEventListener('pointerup', this._onPointListDrop);
+        document.addEventListener('pointercancel', this._onPointListDrop);
     },
 
-    dragViaPointList: function (e) {
-        if (!this._viaPointListDrag || Math.abs(e.clientY - this._viaPointListDrag.startY) <= 3) {
+    dragPointList: function (e) {
+        const drag = this._pointListDrag;
+        if (!drag || Math.abs(e.clientY - drag.startY) <= 3) {
             return;
         }
-        const row = document.elementFromPoint(e.clientX, e.clientY);
-        const target = row && row.closest('.route-planner-point-via');
-        if (target && target.parentElement === this._viaPointsContainer) {
-            this._viaPointListDrag.target = target;
+        drag.dragged = true;
+        if (!this._from || !this._to) {
+            return;
+        }
+        const element = document.elementFromPoint(e.clientX, e.clientY);
+        const target = element && element.closest('.route-planner-point');
+        if (target && target !== drag.row && target.parentElement === this._pointsContainer) {
+            drag.target = target;
+            for (const child of this._pointsContainer.children) {
+                child.classList.toggle('drag-target', child === target);
+            }
         }
     },
 
-    finishViaPointListDrag: function (e) {
-        if (!this._viaPointListDrag) {
+    finishPointListDrag: function (e) {
+        const drag = this._pointListDrag;
+        if (!drag) {
             return;
         }
-        const {index, target} = this._viaPointListDrag;
-        this.stopViaPointListDrag();
-        if (!target) {
+        const {row, dragged, target} = drag;
+        const kind = row.dataset.pointKind;
+        this.stopPointListDrag();
+        if (!dragged) {
+            if (kind === 'from' || kind === 'to') {
+                this.pickPoint(kind);
+            }
             return;
         }
-        const targetIndex = Array.prototype.indexOf.call(this._viaPointsContainer.children, target);
+        if (!target || !this._from || !this._to) {
+            return;
+        }
+        const fromIndex = Array.prototype.indexOf.call(this._pointsContainer.children, row);
+        const targetIndex = Array.prototype.indexOf.call(this._pointsContainer.children, target);
         const insertAfter = e.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
-        let newIndex = targetIndex + (insertAfter ? 1 : 0);
-        if (index < newIndex) {
-            newIndex -= 1;
+        let toIndex = targetIndex + (insertAfter ? 1 : 0);
+        if (fromIndex < toIndex) {
+            toIndex -= 1;
         }
-        this.reorderViaPoint(index, newIndex);
+        this.reorderPoint(fromIndex, toIndex);
     },
 
-    stopViaPointListDrag: function () {
-        this._viaPointListDrag = null;
-        document.removeEventListener('pointermove', this._onViaPointListDrag);
-        document.removeEventListener('pointerup', this._onViaPointListDrop);
-        document.removeEventListener('pointercancel', this._onViaPointListDrop);
+    stopPointListDrag: function () {
+        const drag = this._pointListDrag;
+        this._pointListDrag = null;
+        if (drag) {
+            drag.row.classList.remove('dragging');
+        }
+        for (const child of this._pointsContainer.children) {
+            child.classList.remove('drag-target');
+        }
+        document.removeEventListener('pointermove', this._onPointListDrag);
+        document.removeEventListener('pointerup', this._onPointListDrop);
+        document.removeEventListener('pointercancel', this._onPointListDrop);
     },
 
     updateMarkers: function () {
@@ -376,7 +420,7 @@ const RoutePlanner = L.Control.extend({
 
     moveViaPoint: function (index, latlng) {
         this._viaPoints[index] = L.latLng(latlng);
-        this.updateViaPoints();
+        this.updatePoints();
         this.buildRoute();
     },
 
@@ -388,31 +432,67 @@ const RoutePlanner = L.Control.extend({
         }
         this._viaPoints.push(L.latLng(latlng));
         this._viaLabels.push(label);
-        this.updateViaPoints();
-        this.updateMarkers();
-        this.buildRoute();
-    },
-
-    reorderViaPoint: function (fromIndex, toIndex) {
-        if (fromIndex === toIndex) {
-            return;
-        }
-        const [point] = this._viaPoints.splice(fromIndex, 1);
-        const [label] = this._viaLabels.splice(fromIndex, 1);
-        this._viaPoints.splice(toIndex, 0, point);
-        this._viaLabels.splice(toIndex, 0, label);
         this.updatePoints();
         this.updateMarkers();
         this.buildRoute();
     },
 
+    getOrderedPoints: function () {
+        const points = [];
+        if (this._from) {
+            points.push({latlng: this._from, label: this._fromLabel});
+        }
+        this._viaPoints.forEach((latlng, index) => {
+            points.push({latlng, label: this._viaLabels[index]});
+        });
+        if (this._to) {
+            points.push({latlng: this._to, label: this._toLabel});
+        }
+        return points;
+    },
+
+    reorderPoint: function (fromIndex, toIndex) {
+        if (fromIndex === toIndex) {
+            return;
+        }
+        const points = this.getOrderedPoints();
+        const [moved] = points.splice(fromIndex, 1);
+        points.splice(toIndex, 0, moved);
+        this._from = L.latLng(points[0].latlng);
+        this._fromLabel = points[0].label || null;
+        this._to = L.latLng(points[points.length - 1].latlng);
+        this._toLabel = points[points.length - 1].label || null;
+        const viaPoints = points.slice(1, -1);
+        this._viaPoints = viaPoints.map((point) => L.latLng(point.latlng));
+        this._viaLabels = viaPoints.map((point) => point.label || null);
+        this.updatePoints();
+        this.updateMarkers();
+        this.buildRoute();
+    },
+
+    removePoint: function (kind, index) {
+        if (kind === 'from') {
+            this._from = null;
+            this._fromLabel = null;
+        } else if (kind === 'to') {
+            this._to = null;
+            this._toLabel = null;
+        } else {
+            this._viaPoints.splice(index, 1);
+            this._viaLabels.splice(index, 1);
+        }
+        this.updatePoints();
+        this.updateMarkers();
+        if (this._from && this._to) {
+            this.buildRoute();
+        } else {
+            this.discardRoute(kind === 'from' ? 'Now choose a starting point.' : 'Now choose a destination.');
+        }
+    },
+
     removeViaPoint: function (index, e) {
         L.DomEvent.stopPropagation(e.originalEvent);
-        this._viaPoints.splice(index, 1);
-        this._viaLabels.splice(index, 1);
-        this.updateMarkers();
-        this.updateViaPoints();
-        this.buildRoute();
+        this.removePoint('via', index);
     },
 
     startViaPointDrag: function (e) {
@@ -462,7 +542,7 @@ const RoutePlanner = L.Control.extend({
         this._viaPoints.splice(index, 0, L.latLng(latlng));
         this._viaLabels.splice(index, 0, null);
         this.updateMarkers();
-        this.updateViaPoints();
+        this.updatePoints();
         this.buildRoute();
     },
 
@@ -661,9 +741,7 @@ const RoutePlanner = L.Control.extend({
     },
 
     clear: function () {
-        this._request?.abort();
-        this._request = null;
-        this.hideElevationProfile();
+        this.discardRoute();
         if (this._editingRouteId) {
             this.fire('editcancelled', {routeId: this._editingRouteId});
         }
@@ -674,25 +752,45 @@ const RoutePlanner = L.Control.extend({
         this._viaPoints = [];
         this._viaLabels = [];
         this.setRouteColor(DEFAULT_ROUTE_COLOR);
-        this._route = null;
-        this._projectedRoute = null;
         this._editingRouteId = null;
         this._pickingPoint = null;
         this._map.getContainer().classList.remove('route-planner-picking');
-        this._routeLayer.clearLayers();
         this._markers.clearLayers();
         this.updatePoints();
         this.updateSaveButton();
         this._status.textContent = 'Right-click a point on the map to set the route.';
     },
 
+    isVisible: function () {
+        return Boolean(this._container && L.DomUtil.hasClass(this._container, 'visible'));
+    },
+
+    updatePanelSize: function () {
+        if (!this.isVisible()) {
+            return;
+        }
+        const available = this._map.getSize().y - this._container.offsetTop - 10;
+        this._container.style.maxHeight = `${Math.max(120, available)}px`;
+    },
+
+    toggle: function () {
+        if (this.isVisible()) {
+            this.hide();
+        } else {
+            this.show();
+        }
+    },
+
     show: function () {
         L.DomUtil.addClass(this._container, 'visible');
+        this.updatePanelSize();
+        this.fire('visibilitychange', {visible: true});
     },
 
     hide: function () {
         this.clear();
         L.DomUtil.removeClass(this._container, 'visible');
+        this.fire('visibilitychange', {visible: false});
     },
 });
 
