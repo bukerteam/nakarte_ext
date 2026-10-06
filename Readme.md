@@ -14,7 +14,7 @@
 ## Локальная установка и запуск
 
 Как установить и запустить проект локально —
-[docs/local-setup.md](docs/local-setup.md).
+[docs/local-setup](docs/local-setup/README.md).
 
 ## Базовые возможности
 
@@ -22,5 +22,5 @@
 
 ## Дополнительные возможности
 
-- [Прокладка маршрутов](docs/route-planning.md)
-- [Работа с точками треков](docs/track-points.md)
+- [Прокладка маршрутов](docs/route-planning/README.md)
+- [Работа с точками треков](docs/track-points/README.md)
