@@ -307,3 +307,60 @@
 .tracks-hide-all {
     margin-left: 10px;
 }
+
+.points-selection-toolbar {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.points-selection-count {
+    font-weight: bold;
+}
+
+.points-btn {
+    padding: 4px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.points-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.points-btn:hover:not(:disabled) {
+    background-color: #eee;
+}
+
+.points-btn-delete {
+    color: #d00;
+    border-color: #d00;
+}
+
+.points-btn-cancel {
+    color: #666;
+}
+
+.leaflet-points-selecting {
+    cursor: default;
+}
+
+.points-target-selecting .tracks-rows tr:hover {
+    background-color: #d0e4ff !important;
+    cursor: pointer;
+}
