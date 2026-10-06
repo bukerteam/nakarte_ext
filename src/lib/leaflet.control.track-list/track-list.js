@@ -262,10 +262,11 @@ L.Control.TrackList = L.Control.extend({
             this._markerLayer.on('markerleave', this.onMarkerLeave, this);
             this._pointsSelection = new PointsSelection({
                 map: map,
-                getTrackCount: () => this.tracks().length,
+                hasOtherTracks: (track) => this.tracks().some((other) => other !== track),
                 getTrackColor: (track) => this.colors[track.color()],
                 createToolbar: (handlers) => new PointsSelectionToolbar({
                     container: map.getContainer(),
+                    getTrackCount: () => this.tracks().length,
                     ...handlers,
                 }),
                 onApply: (result) => this._applyPointsAction(result),
@@ -952,11 +953,16 @@ L.Control.TrackList = L.Control.extend({
         },
 
         // Enables picking of a target track in the track list while the
-        // points selection is in the targeting mode.
+        // points selection is in the targeting mode. In this mode clicks on
+        // any row (including the source one) are consumed, so that no row
+        // action interferes with the picker.
         _onPointsTargetingChange: function(targeting) {
+            const table = this._container.querySelector('.tracks-rows');
+            if (!table) {
+                return;
+            }
             if (targeting) {
                 L.DomUtil.addClass(this._container, 'points-target-selecting');
-                const table = this._container.querySelector('.tracks-rows');
                 this._targetRowClickHandler = (e) => {
                     const row = e.target.closest('tr');
                     if (!row) {
@@ -971,10 +977,7 @@ L.Control.TrackList = L.Control.extend({
             } else {
                 L.DomUtil.removeClass(this._container, 'points-target-selecting');
                 if (this._targetRowClickHandler) {
-                    const table = this._container.querySelector('.tracks-rows');
-                    if (table) {
-                        table.removeEventListener('click', this._targetRowClickHandler, true);
-                    }
+                    table.removeEventListener('click', this._targetRowClickHandler, true);
                     this._targetRowClickHandler = null;
                 }
             }

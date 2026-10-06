@@ -84,14 +84,14 @@ function createFakeToolbar() {
     };
 }
 
-function createController({trackCount = 2} = {}) {
+function createController({hasOtherTracks = () => true} = {}) {
     const map = createFakeMap();
     const toolbarStub = createFakeToolbar();
     const applied = [];
     const targetingChanges = [];
     const controller = new PointsSelection({
         map,
-        getTrackCount: () => trackCount,
+        hasOtherTracks,
         getTrackColor: () => '#ff0000',
         createToolbar: (handlers) => {
             toolbarStub.handlers = handlers;
@@ -197,7 +197,7 @@ test('startTargeting applies a single point to the picked track', function () {
 });
 
 test('startTargeting does nothing when there is no other track', function () {
-    const {controller, toolbarStub, targetingChanges} = createController({trackCount: 1});
+    const {controller, toolbarStub, targetingChanges} = createController({hasOtherTracks: () => false});
     const sourceTrack = createTrack([[49.741, 33.451]]);
     controller.startTargeting(sourceTrack, [sourceTrack.markers[0]], POINTS_ACTION.COPY);
     assert.deepEqual(targetingChanges, []);

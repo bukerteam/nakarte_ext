@@ -6,11 +6,11 @@ import {RectangleSelect} from '~/lib/leaflet.control.jnx/selector';
 const BOUNDS_PADDING_RATIO = 0.1;
 const MIN_BOUNDS_PADDING = 0.01;
 
-const POINTS_ACTION = {
+const POINTS_ACTION = Object.freeze({
     DELETE: 'delete',
     COPY: 'copy',
     MOVE: 'move',
-};
+});
 
 // Bounds around all points of a track with some padding, so that the points
 // are strictly inside the initial selection rectangle.
@@ -77,9 +77,9 @@ class PointsSelectionToolbar {
 //   the user; the target itself is picked by the owner (track list), which
 //   calls pickTarget() when a track is clicked.
 class PointsSelection {
-    constructor({map, getTrackCount, getTrackColor, createToolbar, onApply, onActivate, onTargetingChange}) {
+    constructor({map, hasOtherTracks, getTrackColor, createToolbar, onApply, onActivate, onTargetingChange}) {
         this._map = map;
-        this._getTrackCount = getTrackCount;
+        this._hasOtherTracks = hasOtherTracks;
         this._getTrackColor = getTrackColor;
         this._createToolbar = createToolbar;
         this._onApply = onApply;
@@ -105,11 +105,12 @@ class PointsSelection {
 
     startTargeting(track, points, action) {
         this.cancel();
-        if (!points.length || this._getTrackCount() < 2) {
+        if (!points.length || !this._hasOtherTracks(track)) {
             return;
         }
+        this._targeting = {sourceTrack: track, points: points, action: action};
         this._enterMode();
-        this._startTargeting(track, points, action);
+        this._showTargeting();
     }
 
     cancel() {
@@ -157,7 +158,6 @@ class PointsSelection {
         this._highlightLayer = L.featureGroup([]).addTo(this._map);
         L.DomUtil.addClass(this._map.getContainer(), 'leaflet-points-selecting');
         this._toolbar = this._createToolbar({
-            getTrackCount: this._getTrackCount,
             onDelete: () => this._deleteSelected(),
             onCopy: () => this._startCopyMove(POINTS_ACTION.COPY),
             onMove: () => this._startCopyMove(POINTS_ACTION.MOVE),
@@ -206,12 +206,11 @@ class PointsSelection {
         if (!selection || !selection.points.length) {
             return;
         }
-        this._onApply({
+        this._applyAndCancel({
             action: POINTS_ACTION.DELETE,
             sourceTrack: selection.sourceTrack,
             points: selection.points,
         });
-        this.cancel();
     }
 
     _startCopyMove(action) {
@@ -223,11 +222,12 @@ class PointsSelection {
         // Freeze the selection: the rectangle is no longer editable, so the
         // set of points cannot change after the action was chosen.
         this._stopSelection();
-        this._startTargeting(sourceTrack, points, action);
+        this._targeting = {sourceTrack: sourceTrack, points: points, action: action};
+        this._showTargeting();
     }
 
-    _startTargeting(sourceTrack, points, action) {
-        this._targeting = {sourceTrack: sourceTrack, points: points, action: action};
+    _showTargeting() {
+        const {sourceTrack, points} = this._targeting;
         this._toolbar.isTargeting(true);
         this._updateHighlights(sourceTrack, points);
         this._onTargetingChange(true);
@@ -238,12 +238,16 @@ class PointsSelection {
         if (!targeting) {
             return;
         }
-        this._onApply({
+        this._applyAndCancel({
             action: targeting.action,
             sourceTrack: targeting.sourceTrack,
             targetTrack: targetTrack,
             points: targeting.points,
         });
+    }
+
+    _applyAndCancel(result) {
+        this._onApply(result);
         this.cancel();
     }
 }
