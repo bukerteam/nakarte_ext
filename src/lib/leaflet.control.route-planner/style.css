@@ -105,6 +105,10 @@
     white-space: nowrap;
 }
 
+.route-planner-point.empty {
+    cursor: pointer;
+}
+
 .route-planner-point.empty .route-planner-point-label {
     color: #80868b;
 }
@@ -215,8 +219,6 @@
 }
 
 .route-planner-trips {
-    max-height: 40vh;
-    overflow: auto;
     margin-top: 14px;
     padding-top: 10px;
     border-top: 1px solid #e8eaed;
@@ -234,9 +236,5 @@
         width: min(100%, 360px);
         max-height: 100%;
         overflow: auto;
-    }
-
-    .route-planner-trips {
-        max-height: none;
     }
 }

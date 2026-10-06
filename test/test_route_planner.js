@@ -362,6 +362,7 @@ test('toggles panel visibility', function () {
     assert.isFalse(planner.isVisible());
     planner.toggle();
     assert.isTrue(planner.isVisible());
+    assert.match(planner.getContainer().style.maxHeight, /^\d+px$/u);
     planner.toggle();
     assert.isFalse(planner.isVisible());
     map.remove();

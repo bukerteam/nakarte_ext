@@ -306,7 +306,6 @@ const RoutePlanner = L.Control.extend({
             return;
         }
         e.preventDefault();
-        row.classList.add('dragging');
         this._pointListDrag = {row, startY: e.clientY};
         this._onPointListDrag = this._onPointListDrag || this.dragPointList.bind(this);
         this._onPointListDrop = this._onPointListDrop || this.finishPointListDrag.bind(this);
@@ -321,16 +320,17 @@ const RoutePlanner = L.Control.extend({
             return;
         }
         drag.dragged = true;
+        drag.row.classList.add('dragging');
         if (!this._from || !this._to) {
             return;
         }
         const element = document.elementFromPoint(e.clientX, e.clientY);
         const target = element && element.closest('.route-planner-point');
-        if (target && target !== drag.row && target.parentElement === this._pointsContainer) {
-            drag.target = target;
-            for (const child of this._pointsContainer.children) {
-                child.classList.toggle('drag-target', child === target);
-            }
+        const validTarget =
+            target && target !== drag.row && target.parentElement === this._pointsContainer ? target : null;
+        drag.target = validTarget;
+        for (const child of this._pointsContainer.children) {
+            child.classList.toggle('drag-target', child === validTarget);
         }
     },
 
@@ -342,6 +342,9 @@ const RoutePlanner = L.Control.extend({
         const {row, dragged, target} = drag;
         const kind = row.dataset.pointKind;
         this.stopPointListDrag();
+        if (e.type === 'pointercancel') {
+            return;
+        }
         if (!dragged) {
             if (kind === 'from' || kind === 'to') {
                 this.pickPoint(kind);
