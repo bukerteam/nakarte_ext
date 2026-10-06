@@ -1,0 +1,89 @@
+.trip-list {
+    font: 13px/1.4 Arial, sans-serif;
+}
+
+.trip-list-header,
+.trip-list-trip-row,
+.trip-list-route {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.trip-list-header {
+    justify-content: space-between;
+    margin-bottom: 6px;
+    height: 18px;
+    font-size: 13px;
+}
+
+.trip-list button {
+    border: 0;
+    color: #3c4043;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+}
+
+.trip-list-add,
+.trip-list-action {
+    min-width: 24px;
+    padding: 2px 4px;
+    font-size: 17px !important;
+}
+
+.trip-list-trip-row {
+    padding: 3px 0;
+}
+
+.trip-list-trip.selected > .trip-list-trip-row {
+    background: #f1f3f4;
+}
+
+.trip-list-trip-name,
+.trip-list-route-name {
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trip-list-trip-name {
+    flex: 1;
+    font-weight: bold !important;
+}
+
+.trip-list-route {
+    padding: 3px 0 3px 22px;
+}
+
+.trip-list-color {
+    width: 16px;
+    height: 3px;
+    flex: none;
+    cursor: pointer;
+}
+
+.trip-list-color-menu-item {
+    display: inline-block;
+    width: 24px;
+    height: 4px;
+    vertical-align: middle;
+}
+
+.trip-list-route-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.trip-list-route-details {
+    flex: none;
+    color: #5f6368;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.trip-list-empty {
+    margin: 3px 0 0;
+    color: #5f6368;
+}

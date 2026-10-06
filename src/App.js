@@ -34,6 +34,7 @@ import * as logging from '~/lib/logging';
 import safeLocalStorage from '~/lib/safe-localstorage';
 import {ExternalMaps} from '~/lib/leaflet.control.external-maps';
 import {SearchControl} from '~/lib/leaflet.control.search';
+import {enableRoutePlanning} from '~/lib/route-planning';
 import '~/lib/leaflet.placemark';
 import '~/vendored/mapbbcode/FunctionButton';
 import Contextmenu from '~/lib/contextmenu';
@@ -179,6 +180,7 @@ function setUp() { // eslint-disable-line complexity
             notify(customMessage);
         }
     }).addTo(map);
+
     let {valid: validPositionInHash} = map.validateState(hashState.getState('m'));
     map.enableHashState('m', [config.defaultZoom, ...config.defaultLocation]);
 
@@ -239,6 +241,7 @@ function setUp() { // eslint-disable-line complexity
     /* controls bottom-right corner */
 
     tracklist.addTo(map);
+    const {routePlanner} = enableRoutePlanning(map, tracklist);
     const tracksHashParams = tracklist.hashParams();
 
     let hasTrackParamsInHash = false;
@@ -319,10 +322,16 @@ function setUp() { // eslint-disable-line complexity
 
     tracklist.on('startedit', () => azimuthControl.disableControl());
     tracklist.on('elevation-shown', () => azimuthControl.hideProfile());
+    tracklist.on('elevation-shown', () => routePlanner.hideElevationProfile());
     azimuthControl.on('enabled', () => {
         tracklist.stopEditLine();
     });
     azimuthControl.on('elevation-shown', () => tracklist.hideElevationProfile());
+    azimuthControl.on('elevation-shown', () => routePlanner.hideElevationProfile());
+    routePlanner.on('elevation-shown', () => {
+        tracklist.hideElevationProfile();
+        azimuthControl.hideProfile();
+    });
 
     /* setup events logging */
 
