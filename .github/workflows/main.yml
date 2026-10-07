@@ -53,7 +53,5 @@ jobs:
       - run: npm run test -- --browsers ${{matrix.browser}}
         if: ${{! matrix.needs-xvfb}}
       - name: run tests with xvfb
-        uses: GabrielBB/xvfb-action@v1
-        with:
-          run: npm run test -- --browsers ${{matrix.browser}}
+        run: xvfb-run --auto-servernum npm run test -- --browsers ${{matrix.browser}}
         if: matrix.needs-xvfb
