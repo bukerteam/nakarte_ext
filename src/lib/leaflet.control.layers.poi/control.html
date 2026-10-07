@@ -1,0 +1,38 @@
+<div class="leaflet-poi-window">
+    <div class="poi-header">
+        <input type="search" class="poi-search" maxlength="200"
+            data-bind="textInput: query, attr: {placeholder: searchPlaceholder}"/>
+        <button type="button" class="poi-close-button"
+            data-bind="click: onClose, attr: {title: closeText, 'aria-label': closeText}">&times;</button>
+    </div>
+    <div class="poi-toolbar">
+        <a href="#" class="poi-toolbar-button"
+            data-bind="click: onSelectAll, text: selectAllText, clickBubble: false"></a>
+        <a href="#" class="poi-toolbar-button"
+            data-bind="click: onClearAll, text: clearAllText, clickBubble: false"></a>
+        <span class="poi-status" data-bind="text: status, visible: status"></span>
+    </div>
+    <div class="poi-groups" data-bind="foreach: visibleGroups">
+        <div class="poi-group">
+            <label class="poi-group-header">
+                <input type="checkbox" data-bind="checked: allSelected, indeterminate: someSelected"/>
+                <span class="poi-group-title" data-bind="text: title"></span>
+            </label>
+            <div class="poi-categories" data-bind="foreach: categories">
+                <label class="poi-category" data-bind="attr: {title: tooltip}">
+                    <input type="checkbox"
+                        data-bind="checked: selected, event: {change: onChanged}"/>
+                    <img class="poi-category-icon" alt="" data-bind="attr: {src: iconUrl}"/>
+                    <span class="poi-category-title" data-bind="text: title"></span>
+                    <span class="poi-category-count" data-bind="text: countText, visible: countText"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="poi-footer">
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
+            &copy; OpenStreetMap contributors
+        </a>
+        <span class="poi-footer-note">ODbL</span>
+    </div>
+</div>
