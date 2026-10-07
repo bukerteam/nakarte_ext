@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '24'
-      - run: cp src/secrets.js.template src/secrets.js
+      - run: cp src/secrets.json.template src/secrets.json
       - run: yarnpkg
 
       - run: npm run lint:code
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '24'
-      - run: cp src/secrets.js.template src/secrets.js
+      - run: cp src/secrets.json.template src/secrets.json
       - run: yarnpkg
 
       - name: install specific version of Firefox

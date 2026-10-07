@@ -4,6 +4,7 @@ import escapeHtml from 'escape-html';
 import './canvasMarkers.css';
 import RBush from 'rbush';
 import loadImage from 'image-promise';
+import {clusterPoints} from '~/lib/cluster-markers';
 import {wrapLatLngToTarget} from '~/lib/leaflet.fixes/fixWorldCopyJump';
 
 /*
@@ -31,6 +32,33 @@ function calcIntersectionSum(rect, rects) {
         }
     }
     return sum;
+}
+
+/*
+ Picks the icon that is most common among the cluster members, so that a mixed cluster shows the
+ prevailing category icon.
+ */
+function pickClusterIcon(points) {
+    const counts = new Map();
+    for (const point of points) {
+        const icon = point.marker.icon;
+        const key = typeof icon === 'string' ? icon : icon?.url;
+        if (!key) {
+            continue;
+        }
+        const entry = counts.get(key) ?? {icon, count: 0};
+        entry.count += 1;
+        counts.set(key, entry);
+    }
+    let best = null;
+    let bestCount = 0;
+    for (const entry of counts.values()) {
+        if (entry.count > bestCount) {
+            best = entry.icon;
+            bestCount = entry.count;
+        }
+    }
+    return best;
 }
 
 class MarkerRBush extends RBush {
@@ -63,7 +91,13 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             pane: 'rasterMarker',
             updateWhenZooming: !L.Browser.mobile,
             iconsOpacity: 1,
+            iconBackground: false,
             labelShadowWidth: 1,
+            clustering: false,
+            maxClusterRadius: 50,
+            disableClusterAtZoom: Infinity,
+            pixelRatio: 1,
+            useDevicePixelRatio: false,
         },
 
         initialize: function(markers, options) {
@@ -74,6 +108,8 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             this._labelPositions = {};
             this._labelPositionsZoom = null;
             this.addMarkers(markers);
+            this._displayRtree = null;
+            this._displayRtreeZoom = null;
             this._images = {};
             this._tileQueue = [];
             this._hoverMarker = null;
@@ -84,6 +120,7 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
         addMarkers: function(markers) {
             if (markers) {
                 this.rtree.load(markers);
+                this.invalidateDisplayMarkers();
                 this.resetLabels();
                 setTimeout(() => this.redraw(), 0);
             }
@@ -92,6 +129,7 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
         addMarker: function(marker) {
             // FIXME: adding existing marker must be be noop
             this.rtree.insert(marker);
+            this.invalidateDisplayMarkers();
             this.resetLabels();
             setTimeout(() => this.redraw(), 0);
         },
@@ -102,6 +140,7 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
 
         removeMarkers: function(markers) {
             markers.forEach((marker) => this.rtree.remove(marker));
+            this.invalidateDisplayMarkers();
             this.resetLabels();
             setTimeout(() => this.redraw(), 0);
         },
@@ -123,6 +162,55 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
 
         getMarkers: function() {
             return this.rtree.all();
+        },
+
+        invalidateDisplayMarkers: function() {
+            this._displayRtree = null;
+            this._displayRtreeZoom = null;
+        },
+
+        /*
+         Returns the rtree used for drawing: the original markers when clustering is disabled or the
+         zoom is too big, otherwise clusters with counts (plus markers that are not clustered).
+         */
+        getDisplayRtree: function(zoom) {
+            if (!this.options.clustering || zoom >= this.options.disableClusterAtZoom) {
+                return this.rtree;
+            }
+            if (this._displayRtree && this._displayRtreeZoom === zoom) {
+                return this._displayRtree;
+            }
+            const center = this._map.getCenter();
+            const projected = this.rtree.all().map((marker) => {
+                // keep longitudes in the same world copy as the map center, so markers on both
+                // sides of the antimeridian are projected next to each other
+                const latlng = wrapLatLngToTarget(marker.latlng, center);
+                const p = this._map.project(latlng, zoom);
+                return {x: p.x, y: p.y, marker, latlng};
+            });
+            const displayMarkers = [];
+            for (const cluster of clusterPoints(projected, this.options.maxClusterRadius)) {
+                if (cluster.points.length === 1) {
+                    displayMarkers.push(cluster.points[0].marker);
+                } else {
+                    displayMarkers.push({
+                        latlng: this._map.unproject(L.point(cluster.x, cluster.y), zoom),
+                        _cluster: {
+                            count: cluster.points.length,
+                            markers: cluster.points.map((point) => point.marker),
+                            bounds: L.latLngBounds(cluster.points.map((point) => point.latlng)),
+                        },
+                        icon: pickClusterIcon(cluster.points),
+                        label: null,
+                        tooltip: null,
+                    });
+                }
+            }
+            const rtree = new MarkerRBush(9);
+            rtree.load(displayMarkers);
+            this._displayRtree = rtree;
+            this._displayRtreeZoom = zoom;
+            return rtree;
         },
 
         findLabelPosition: function(iconCenter, iconSize, textWidth, textHeight, pixelExtents) {
@@ -177,10 +265,18 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             return Promise.resolve();
         },
 
+        getPixelRatio: function() {
+            if (this.options.useDevicePixelRatio) {
+                return Math.min(window.devicePixelRatio || 1, 2);
+            }
+            return this.options.pixelRatio;
+        },
+
         createTile: function(coords, done) {
             const canvas = L.DomUtil.create('canvas', 'leaflet-tile');
-            canvas.width = this.options.tileSize;
-            canvas.height = this.options.tileSize;
+            const pixelRatio = this.getPixelRatio();
+            canvas.width = this.options.tileSize * pixelRatio;
+            canvas.height = this.options.tileSize * pixelRatio;
             setTimeout(() => {
                     this.drawTile(canvas, coords).then(() => done(null, canvas));
                 }, 0
@@ -194,8 +290,9 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                 return {};
             }
             const
-                iconsHorPad = withoutPadding ? 0 : 520,
-                iconsVertPad = withoutPadding ? 0 : 50,
+                clusterPad = this.options.clustering ? this.options.maxClusterRadius + 10 : 0,
+                iconsHorPad = withoutPadding ? 0 : 520 + clusterPad,
+                iconsVertPad = withoutPadding ? 0 : 50 + clusterPad,
                 labelsHorPad = withoutPadding ? 0 : 256,
                 labelsVertPad = withoutPadding ? 0 : 20;
             const
@@ -210,11 +307,12 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             const
                 iconUrls = [],
                 markerJobs = {};
+            const displayRtree = this.getDisplayRtree(zoom);
 
             // used only to preload icons
             const pointsForMarkers = [];
             for (let shift of [-360, 0, 360]) {
-                pointsForMarkers.push(...this.rtree.search({
+                pointsForMarkers.push(...displayRtree.search({
                     minX: iconsBounds.getWest() + shift,
                     minY: iconsBounds.getSouth(),
                     maxX: iconsBounds.getEast() + shift,
@@ -225,7 +323,7 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             // used to place labels
             const pointsForLabels = [];
             for (let shift of [-360, 0, 360]) {
-                pointsForLabels.push(...this.rtree.search({
+                pointsForLabels.push(...displayRtree.search({
                     minX: labelsBounds.getWest() + shift,
                     minY: labelsBounds.getSouth(),
                     maxX: labelsBounds.getEast() + shift,
@@ -244,7 +342,9 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                 if (typeof icon === 'function') {
                     icon = icon(marker);
                 }
-                iconUrls.push(icon.url);
+                if (icon) {
+                    iconUrls.push(icon.url);
+                }
                 let markerId = L.stamp(marker);
                 markerJobs[markerId] = {marker: marker, icon: icon, projectedXY: p};
             }
@@ -263,32 +363,48 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                 {name: this.options.labelFontName, size: this.options.labelFontSize * this.options.iconScale}
             );
             for (let [markerId, job] of Object.entries(markerJobs)) {
-                let img = this._images[job.icon.url];
+                const img = job.icon ? this._images[job.icon.url] : null;
+                if (!img) {
+                    continue;
+                }
                 job.img = img;
                 const imgW = Math.round(img.width * this.options.iconScale);
                 const imgH = Math.round(img.height * this.options.iconScale);
+                const iconCenter = job.icon.center || [img.width / 2, img.height / 2];
                 if (!(markerId in this._iconPositions)) {
-                    let x = job.projectedXY.x - job.icon.center[0] * this.options.iconScale;
-                    let y = job.projectedXY.y - job.icon.center[1] * this.options.iconScale;
+                    let x = job.projectedXY.x - iconCenter[0] * this.options.iconScale;
+                    let y = job.projectedXY.y - iconCenter[1] * this.options.iconScale;
                     x = Math.round(x);
                     y = Math.round(y);
                     this._iconPositions[markerId] = [x, y];
+                    const cx = x + imgW / 2;
+                    const cy = y + imgH / 2;
+                    const radius = this.options.iconBackground
+                        ? Math.max(imgW, imgH) / 2 + 2 * this.options.iconScale
+                        : 0;
                     this._regions.insert({
-                        minX: x,
-                        minY: y,
-                        maxX: x + imgW,
-                        maxY: y + imgH,
+                        minX: radius ? cx - radius : x,
+                        minY: radius ? cy - radius : y,
+                        maxX: radius ? cx + radius : x + imgW,
+                        maxY: radius ? cy + radius : y + imgH,
                         marker: job.marker,
-                        isLabel: false
+                        isLabel: false,
+                        isCluster: Boolean(job.marker._cluster)
                     });
                 }
                 let [x, y] = this._iconPositions[markerId];
                 job.iconCenter = [x + imgW / 2, y + imgH / 2];
                 job.iconSize = [imgW, imgH];
+                job.circleRadius = this.options.iconBackground
+                    ? Math.max(imgW, imgH) / 2 + 2 * this.options.iconScale
+                    : 0;
             }
             for (let marker of pointsForLabels) {
                 const markerId = L.stamp(marker);
                 const job = markerJobs[markerId];
+                if (job.marker._cluster) {
+                    continue;
+                }
                 let label = job.marker.label;
                 if (typeof label === 'function') {
                     label = label(job.marker, zoom);
@@ -316,7 +432,12 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
             }
 
             const regionsInTile = this._regions.search({minX: tileW, minY: tileN, maxX: tileE, maxY: tileS});
-            // draw labels
+            this.drawLabels(ctx, regionsInTile, markerJobs, tileW, tileN, textHeight);
+            this.drawIcons(ctx, regionsInTile, markerJobs, tileW, tileN);
+            this.drawClusterCounts(ctx, regionsInTile, markerJobs, tileW, tileN);
+        },
+
+        drawLabels: function(ctx, regionsInTile, markerJobs, tileW, tileN, textHeight) {
             for (let region of regionsInTile) {
                 if (region.isLabel) {
                     // TODO: set font name ant size in options
@@ -336,8 +457,10 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                     ctx.fillText(job.label, x, y + textHeight);
                 }
             }
+        },
+
+        drawIcons: function(ctx, regionsInTile, markerJobs, tileW, tileN) {
             ctx.globalAlpha = this.options.iconsOpacity;
-            // draw icons
             for (let region of regionsInTile) {
                 if (!region.isLabel) {
                     const markerId = L.stamp(region.marker);
@@ -345,10 +468,39 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                     const p = this._iconPositions[markerId];
                     const x = p[0] - tileW;
                     const y = p[1] - tileN;
+                    if (job.circleRadius) {
+                        ctx.beginPath();
+                        ctx.arc(job.iconCenter[0] - tileW, job.iconCenter[1] - tileN, job.circleRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = '#fff';
+                        ctx.fill();
+                    }
                     ctx.drawImage(job.img, x, y, job.iconSize[0], job.iconSize[1]);
                 }
             }
             ctx.globalAlpha = 1;
+        },
+
+        drawClusterCounts: function(ctx, regionsInTile, markerJobs, tileW, tileN) {
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'bottom';
+            const countFontSize = Math.max(9, Math.round(this.options.labelFontSize * this.options.iconScale));
+            for (let region of regionsInTile) {
+                if (region.isCluster) {
+                    const markerId = L.stamp(region.marker);
+                    const job = markerJobs[markerId];
+                    const cornerX = job.iconCenter[0] + (job.circleRadius || job.iconSize[0] / 2) - tileW + 1;
+                    const cornerY = job.iconCenter[1] - (job.circleRadius || job.iconSize[1] / 2) - tileN - 1;
+                    const countText = String(job.marker._cluster.count);
+                    ctx.font = `bold ${countFontSize}px ${this.options.labelFontName}`;
+                    ctx.lineWidth = 1.5 * this.options.iconScale;
+                    ctx.strokeStyle = '#fff';
+                    ctx.fillStyle = '#000';
+                    ctx.strokeText(countText, cornerX, cornerY);
+                    ctx.fillText(countText, cornerX, cornerY);
+                }
+            }
+            ctx.textAlign = 'start';
+            ctx.textBaseline = 'alphabetic';
         },
 
         drawTile: async function(canvas, coords) {
@@ -365,6 +517,11 @@ L.Layer.CanvasMarkers = L.GridLayer.extend({
                 return;
             }
             await this.preloadIcons(iconUrls);
+            const pixelRatio = canvas.width / this.options.tileSize;
+            if (pixelRatio !== 1) {
+                const ctx = canvas.getContext('2d');
+                ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            }
             this.drawSelectedMarkers(canvas, pixelExtents, markerJobs, pointsForLabels, zoom);
         },
 

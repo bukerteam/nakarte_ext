@@ -8,10 +8,10 @@ cd nakarte
 yarn
 ```
 
-Создать файл `src/secrets.js` из шаблона:
+Создать файл `src/secrets.json` из шаблона:
 
 ```bash
-cp src/secrets.js.template src/secrets.js
+cp src/secrets.json.template src/secrets.json
 ```
 
 Запустить dev-сервер:
@@ -26,5 +26,5 @@ yarn start
 yarn run lint
 ```
 
-Часть возможностей требует ключей в `src/secrets.js`; в репозитории
+Часть возможностей требует ключей в `src/secrets.json`; в репозитории
 вместо них лежат заглушки.

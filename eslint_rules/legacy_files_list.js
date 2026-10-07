@@ -144,7 +144,6 @@ module.exports = [
     // 'src/vendored/github.com/bbecquet/Leaflet.RotatedMarker/leaflet.rotatedMarker.js',
     'src/config.js',
     'src/index.js',
-    'src/secrets.js',
     'src/App.js',
     'src/layers.js',
 ];

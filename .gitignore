@@ -3,5 +3,6 @@ build
 .idea
 deploy
 secrets.js
+secrets.json
 _trash
 build_cache

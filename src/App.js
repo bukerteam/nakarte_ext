@@ -19,6 +19,7 @@ import '~/lib/leaflet.control.track-list/track-list.hash-state';
 import enableLayersControlAdaptiveHeight from '~/lib/leaflet.control.layers.adaptive-height';
 import enableLayersMinimize from '~/lib/leaflet.control.layers.minimize';
 import enableLayersConfig from '~/lib/leaflet.control.layers.configure';
+import enableLayersPoi from '~/lib/leaflet.control.layers.poi';
 import raiseControlsOnFocus from '~/lib/leaflet.controls.raise-on-focus';
 import {getLayers} from './layers';
 import '~/lib/leaflet.control.layers.events';
@@ -194,6 +195,9 @@ function setUp() { // eslint-disable-line complexity
     enableLayersControlAdaptiveHeight(layersControl);
     enableLayersMinimize(layersControl);
     enableLayersConfig(layersControl, getLayers(), {withHotkeys: areHotkeysEnabled});
+    enableLayersPoi(layersControl, {
+        overpassUrls: [config.overpassApiUrl, ...(config.overpassApiFallbackUrls ?? [])],
+    });
     layersControl.addTo(map);
     layersControl.enableHashState('l');
 
