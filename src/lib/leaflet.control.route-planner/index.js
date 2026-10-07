@@ -5,6 +5,7 @@ import Contextmenu from '~/lib/contextmenu';
 import {ElevationProfile, calcSamplingInterval} from '~/lib/leaflet.control.elevation-profile';
 import {DEFAULT_ROUTE_COLOR, formatDistance, formatDuration} from '~/lib/route-planning/common';
 import {createRoutingProvider} from '~/lib/routing';
+import {createAbortController} from '~/lib/routing/abort';
 import {PROFILES} from '~/lib/routing/profiles';
 import './style.css';
 
@@ -631,7 +632,7 @@ const RoutePlanner = L.Control.extend({
         this.updateSaveButton();
         this._status.textContent = 'Building route…';
         this._request?.abort();
-        const request = new AbortController();
+        const request = createAbortController();
         this._request = request;
         const from = this._from;
         const to = this._to;
