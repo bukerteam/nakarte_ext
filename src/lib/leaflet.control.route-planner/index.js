@@ -11,6 +11,13 @@ import './style.css';
 
 const PROFILE_OPTIONS_HTML = PROFILES.map(({id, label}) => `<option value="${id}">${label}</option>`).join('');
 
+// Very old browsers (for example Firefox 52) have no pointer events: the point list drag falls
+// back to mouse events there.
+const POINTER_EVENTS_SUPPORTED = typeof PointerEvent !== 'undefined';
+const DRAG_START_EVENT = POINTER_EVENTS_SUPPORTED ? 'pointerdown' : 'mousedown';
+const DRAG_MOVE_EVENT = POINTER_EVENTS_SUPPORTED ? 'pointermove' : 'mousemove';
+const DRAG_END_EVENTS = POINTER_EVENTS_SUPPORTED ? ['pointerup', 'pointercancel'] : ['mouseup'];
+
 function formatCoordinate(latlng) {
     return `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
 }
@@ -279,7 +286,7 @@ const RoutePlanner = L.Control.extend({
     renderPointRow: function ({kind, index, icon, latlng, label}) {
         const row = L.DomUtil.create('div', `route-planner-point route-planner-point-${kind}`, this._pointsContainer);
         row.dataset.pointKind = kind;
-        row.addEventListener('pointerdown', this.startPointListDrag.bind(this, row));
+        row.addEventListener(DRAG_START_EVENT, this.startPointListDrag.bind(this, row));
         const iconElement = L.DomUtil.create('span', 'route-planner-point-icon', row);
         iconElement.textContent = icon;
         const labelElement = L.DomUtil.create('span', 'route-planner-point-label', row);
@@ -310,9 +317,10 @@ const RoutePlanner = L.Control.extend({
         this._pointListDrag = {row, startY: e.clientY};
         this._onPointListDrag = this._onPointListDrag || this.dragPointList.bind(this);
         this._onPointListDrop = this._onPointListDrop || this.finishPointListDrag.bind(this);
-        document.addEventListener('pointermove', this._onPointListDrag);
-        document.addEventListener('pointerup', this._onPointListDrop);
-        document.addEventListener('pointercancel', this._onPointListDrop);
+        document.addEventListener(DRAG_MOVE_EVENT, this._onPointListDrag);
+        for (const eventName of DRAG_END_EVENTS) {
+            document.addEventListener(eventName, this._onPointListDrop);
+        }
     },
 
     dragPointList: function (e) {
@@ -374,9 +382,10 @@ const RoutePlanner = L.Control.extend({
         for (const child of this._pointsContainer.children) {
             child.classList.remove('drag-target');
         }
-        document.removeEventListener('pointermove', this._onPointListDrag);
-        document.removeEventListener('pointerup', this._onPointListDrop);
-        document.removeEventListener('pointercancel', this._onPointListDrop);
+        document.removeEventListener(DRAG_MOVE_EVENT, this._onPointListDrag);
+        for (const eventName of DRAG_END_EVENTS) {
+            document.removeEventListener(eventName, this._onPointListDrop);
+        }
     },
 
     updateMarkers: function () {
