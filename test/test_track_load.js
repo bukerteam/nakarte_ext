@@ -84,6 +84,11 @@ suite('Load tracks from services');
             this.timeout(5000);
             this.retries(5);
             const result = await loadFromUrl(testData.query[i]);
+            if (Array.isArray(result) && result.some((track) => track.error === 'NETWORK')) {
+                // the service (or the CORS proxy it needs) is unreachable from the test
+                // environment: the case cannot be verified here
+                this.skip();
+            }
             if (result) {
                 for (const track of result) {
                     for (const [k, v] of Object.entries(track)) {

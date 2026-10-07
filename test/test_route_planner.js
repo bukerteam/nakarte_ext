@@ -334,10 +334,15 @@ test('reorders points with drag and drop', async function () {
     const rows = planner.getContainer().querySelectorAll('.route-planner-point');
     const originalElementFromPoint = document.elementFromPoint;
     document.elementFromPoint = () => rows[0];
+    const hasPointerEvents = typeof PointerEvent !== 'undefined';
+    const dragPrefix = hasPointerEvents ? 'pointer' : 'mouse';
+    function createDragEvent(type, options) {
+        return hasPointerEvents ? new PointerEvent(type, options) : new MouseEvent(type, options);
+    }
     try {
-        rows[1].dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: 0, clientY: 0}));
-        document.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: 0, clientY: 40}));
-        document.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: 0, clientY: 40}));
+        rows[1].dispatchEvent(createDragEvent(`${dragPrefix}down`, {bubbles: true, button: 0, clientX: 0, clientY: 0}));
+        document.dispatchEvent(createDragEvent(`${dragPrefix}move`, {bubbles: true, clientX: 0, clientY: 40}));
+        document.dispatchEvent(createDragEvent(`${dragPrefix}up`, {bubbles: true, clientX: 0, clientY: 40}));
     } finally {
         document.elementFromPoint = originalElementFromPoint;
     }

@@ -1,3 +1,4 @@
+import {createAbortController} from './abort';
 import {decodePolyline} from './polyline';
 
 // Application-level profile ids mapped to Valhalla costing models.
@@ -63,24 +64,32 @@ function buildUrl(baseUrl, request, apiKey) {
 }
 
 async function fetchWithTimeout(url, {signal, timeout}) {
-    const controller = new AbortController();
+    const controller = createAbortController();
     let timedOut = false;
+    let abort = null;
+    let rejectTimeout;
+    const timeoutPromise = new Promise((resolve, reject) => {
+        rejectTimeout = reject;
+    });
     const timeoutId = setTimeout(() => {
         timedOut = true;
         controller.abort();
+        rejectTimeout();
     }, timeout);
-    function abort() {
-        controller.abort();
-    }
-    if (signal) {
+    if (controller.signal && signal) {
         if (signal.aborted) {
             controller.abort();
         } else {
+            abort = () => controller.abort();
             signal.addEventListener('abort', abort);
         }
     }
     try {
-        return await fetch(url, {signal: controller.signal});
+        const request = fetch(url, controller.signal ? {signal: controller.signal} : {});
+        request.catch(() => {
+            // the rejection is handled through the race result below
+        });
+        return await Promise.race([request, timeoutPromise]);
     } catch (error) {
         if (timedOut) {
             throw new Error('Routing service request timed out');
@@ -88,7 +97,7 @@ async function fetchWithTimeout(url, {signal, timeout}) {
         throw error;
     } finally {
         clearTimeout(timeoutId);
-        if (signal) {
+        if (abort) {
             signal.removeEventListener('abort', abort);
         }
     }

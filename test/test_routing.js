@@ -40,11 +40,13 @@ function stubFetch(handler) {
 function abortableFetchStub() {
     return function (_unusedUrl, options) {
         return new Promise((_unusedResolve, reject) => {
-            options.signal.addEventListener('abort', () => {
-                const error = new Error('aborted');
-                error.name = 'AbortError';
-                reject(error);
-            });
+            if (options && options.signal) {
+                options.signal.addEventListener('abort', () => {
+                    const error = new Error('aborted');
+                    error.name = 'AbortError';
+                    reject(error);
+                });
+            }
         });
     };
 }
@@ -339,6 +341,10 @@ test('times out a hanging request', async function () {
 });
 
 test('forwards an abort from the caller', async function () {
+    if (typeof AbortController === 'undefined') {
+        // very old browsers cannot cancel requests at all
+        this.skip();
+    }
     const restoreFetch = stubFetch(abortableFetchStub());
     try {
         const provider = new ValhallaProvider({url: 'https://routing.example/route', timeout: 5000});
