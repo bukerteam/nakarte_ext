@@ -474,10 +474,9 @@ class LayerGroupWithOptions extends L.LayerGroup {
                 },
                 {
                     title: 'MapMagic',
-                    // Ported from sikmir/nakarte@9b89db58. Unlike the source, isDefault is false:
-                    // in this fork a new default layer is auto-enabled for existing users, and
-                    // mapmagic.app publishes no tile terms of use for third-party clients.
-                    isDefault: false,
+                    // Ported from sikmir/nakarte@9b89db58. Enabled by default in this fork.
+                    // Note: mapmagic.app publishes no tile terms of use for third-party clients.
+                    isDefault: true,
                     layer: L.tileLayer('https://tile.mapmagic.app/{z}/{x}/{y}.png',
                         {
                             code: 'Mgc',
