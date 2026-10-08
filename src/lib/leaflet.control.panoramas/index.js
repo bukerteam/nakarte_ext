@@ -91,7 +91,9 @@ L.Control.Panoramas = L.Control.extend({
                     provider: googleProvider,
                     layerOptions: {zIndex: 10},
                     code: 'g',
-                    selected: ko.observable(true),
+                    // no provider is preselected in this fork: the default state is n2=_ (control on,
+                    // nothing selected); the user picks a provider when needed
+                    selected: ko.observable(false),
                     mapMarkerType: 'normal'
                 },
                 {
