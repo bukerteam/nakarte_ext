@@ -396,14 +396,13 @@ function enableConfig(control, {layers, customLayersOrder}, options = {withHotke
                         }
                     }
                 );
-                // если нет активного базового слоя, включить первый, если он есть
+                // если нет активного базового слоя, включить помеченный дефолтным, иначе первый
                 if (!hasBaselayerOnMap) {
-                    for (let layer of enabledLayers) {
-                        if (!layer.layer.options.isOverlay) {
-                            this._map.addLayer(layer.layer);
-                            hasBaselayerOnMap = true;
-                            break;
-                        }
+                    const baseLayers = enabledLayers.filter((l) => !l.layer.options.isOverlay);
+                    const defaultBaseLayer = baseLayers.find((l) => l.layer.options.defaultBase) ?? baseLayers[0];
+                    if (defaultBaseLayer) {
+                        this._map.addLayer(defaultBaseLayer.layer);
+                        hasBaselayerOnMap = true;
                     }
                 }
                 // Not quite correct - the event will be fired even if there was no base layer before the update.
