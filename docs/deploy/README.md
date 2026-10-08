@@ -9,25 +9,31 @@ Workflow — `.github/workflows/deploy-pages.yml`.
 1. Устанавливаются Node 24 и зависимости (`yarnpkg`).
 2. Из `src/secrets.json.template` создаётся `src/secrets.json`
    (подробнее о секретах — в `docs/local-setup/README.md`).
-3. Выполняется `npm run build`, содержимое `build/` публикуется на
-   GitHub Pages.
+3. Выполняется `npm run build`; если задан секрет
+   `OVERPASS_NEXTGIS_KEY`, в `build/config.json` записывается ключ
+   NextGIS, и содержимое `build/` публикуется на GitHub Pages.
 
 Пути в сборке относительные, поэтому сайт работает и из подпапки.
 
-## Включить быстрый Overpass (ключ NextGIS)
+## Ключ NextGIS для быстрого Overpass
 
-По умолчанию сборка использует шаблон: Overpass работает через зеркало
-VK Maps. Чтобы публиковать сборку с инстансом NextGIS:
+Без ключа POI грузятся через зеркало VK Maps: медленно (20–50 с) и с
+ошибками, когда зеркало перегружено. С ключом NextGIS загрузка занимает
+доли секунды. Ключ можно задать одним из способов:
 
-1. Открой Settings → Secrets and variables → Actions.
-2. Нажми New repository secret.
-3. Имя — `OVERPASS_NEXTGIS_KEY`, значение — ключ из личного кабинета
-   my.nextgis.com.
-4. Перезапусти workflow (Actions → deploy-pages → Run workflow) или
-   сделай любой пуш в `master`.
+1. **В браузере** (приватно): открой панель POI и вставь ключ в поле
+   «Ключ NextGIS» внизу панели. Ключ хранится только в этом браузере
+   (localStorage) и никуда не отправляется.
+2. **Через config.json** (для всех посетителей): задай секрет
+   `OVERPASS_NEXTGIS_KEY` в Settings → Secrets and variables → Actions и
+   перезапусти workflow. Workflow положит ключ в `build/config.json` —
+   файл **публично доступен** по адресу
+   https://bukerteam.github.io/nakarte_ext/config.json, поэтому
+   используй ключ, который не жалко отозвать.
+3. **В сборке** (для локальной разработки): ключ в `src/secrets.json`
+   попадает в JS-бандл и тоже становится публичным.
 
-Ключ будет вшит в JS и доступен всем посетителям сайта: используй
-отдельный ключ, который не жалко отозвать.
+Приоритет: ключ из браузера → `config.json` → ключ из сборки.
 
 ## Релизы
 

@@ -69,6 +69,18 @@ const PoiLayer = L.Layer.CanvasMarkers.extend({
         }
     },
 
+    /*
+     Replaces the Overpass endpoints (for example when the NextGIS key changes) and refetches the
+     current view through them.
+     */
+    setOverpassUrls: function (urls) {
+        this._client.setUrls(urls);
+        this._clearLoadedData();
+        if (this._map) {
+            this.scheduleUpdate(0);
+        }
+    },
+
     _fireSelectedCounts: function () {
         const counts = {};
         for (const id of this._categoryIds) {

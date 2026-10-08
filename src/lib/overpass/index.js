@@ -170,6 +170,21 @@ class OverpassClient {
         return this._urls[this._urlIndex];
     }
 
+    /*
+     Replaces the endpoint list (for example when the NextGIS key changes) and starts from the
+     first endpoint again.
+     */
+    setUrls(urls) {
+        const list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean);
+        if (!list.length) {
+            throw new Error('overpass endpoint is not configured');
+        }
+        this._urls = list;
+        this._urlIndex = 0;
+        this._sameEndpointFailures = 0;
+        this._workingUrl = null;
+    }
+
     _findPersistentResponse(queryString) {
         const entry = this._persistentCache.find((item) => item.query === queryString);
         return entry ? entry.data : null;
@@ -335,3 +350,4 @@ class OverpassClient {
 }
 
 export {buildOverpassQuery, parseOverpassResponse, orderOverpassUrls, OverpassClient};
+export {buildOverpassUrls} from './endpoints';
