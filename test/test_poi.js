@@ -1246,3 +1246,24 @@ test('changing the NextGIS key in the panel rebuilds the endpoints', function ()
     ]);
     setUserKey('');
 });
+
+test('accepts the full NextGIS endpoint url as the key', function () {
+    safeLocalStorage.removeItem('overpassNextgisKey');
+    setUserKey('https://overpass.nextgis.com/my-key/api/interpreter');
+    assert.equal(getUserKey(), 'my-key');
+    setUserKey(' my-key ');
+    assert.equal(getUserKey(), 'my-key');
+    setUserKey('');
+    assert.isNull(getUserKey());
+});
+
+test('shows which interpreter served the load', function () {
+    const control = {};
+    enablePoi(control);
+    control._poiLayer = {getWorkingUrl: () => 'https://overpass.nextgis.com/key/api/interpreter'};
+    assert.equal(control._getPoiSourceText({state: 'loaded'}), 'NextGIS');
+    control._poiLayer = {getWorkingUrl: () => 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'};
+    assert.match(control._getPoiSourceText({state: 'limit'}), /VK|зеркал/u);
+    assert.equal(control._getPoiSourceText({state: 'loading'}), '');
+    assert.equal(control._getPoiSourceText({state: 'error'}), '');
+});

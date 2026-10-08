@@ -81,6 +81,13 @@ const PoiLayer = L.Layer.CanvasMarkers.extend({
         }
     },
 
+    /*
+     Returns the endpoint that served the last successful request, if any.
+     */
+    getWorkingUrl: function () {
+        return this._client.getWorkingUrl();
+    },
+
     _fireSelectedCounts: function () {
         const counts = {};
         for (const id of this._categoryIds) {

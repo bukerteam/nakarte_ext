@@ -11,6 +11,7 @@
         <a href="#" class="poi-toolbar-button"
             data-bind="click: onClearAll, text: clearAllText, clickBubble: false"></a>
         <span class="poi-status" data-bind="text: status, visible: status"></span>
+        <span class="poi-source" data-bind="text: sourceText, visible: sourceText"></span>
     </div>
     <div class="poi-groups" data-bind="foreach: visibleGroups">
         <div class="poi-group">
@@ -32,7 +33,7 @@
     <div class="poi-footer">
         <div class="poi-overpass-key">
             <input type="text" class="poi-key-input" maxlength="100"
-                data-bind="value: nextgisKey, attr: {placeholder: nextgisKeyPlaceholder},
+                data-bind="textInput: nextgisKey, attr: {placeholder: nextgisKeyPlaceholder},
                     event: {change: onNextgisKeyChanged}"/>
             <div class="poi-key-hint" data-bind="text: nextgisKeyHint"></div>
         </div>

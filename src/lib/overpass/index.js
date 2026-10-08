@@ -185,6 +185,13 @@ class OverpassClient {
         this._workingUrl = null;
     }
 
+    /*
+     Returns the endpoint that served the last successful request, if any.
+     */
+    getWorkingUrl() {
+        return this._workingUrl;
+    }
+
     _findPersistentResponse(queryString) {
         const entry = this._persistentCache.find((item) => item.query === queryString);
         return entry ? entry.data : null;
