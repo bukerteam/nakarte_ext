@@ -481,6 +481,7 @@ class LayerGroupWithOptions extends L.LayerGroup {
                         {
                             code: 'Mgc',
                             isOverlay: false,
+                            defaultBase: true,
                             maxNativeZoom: 18,
                             scaleDependent: true,
                             print: true,

@@ -13,6 +13,10 @@ function checkLayer(layerDef, isWrapper, parentLayer) {
         assert.isNotEmpty(options.code, 'options.code');
     }
     assert.oneOf(options.isOverlay, [true, false], 'isOverlay');
+    if ('defaultBase' in options) {
+        assert.isBoolean(options.defaultBase, 'defaultBase');
+        assert.isFalse(options.isOverlay, 'defaultBase must be a base layer');
+    }
     if (isSublayer) {
         assert.equal(options.isOverlay, parentLayer.options.isOverlay);
     }
@@ -180,6 +184,12 @@ test('MapMagic layer properties', function () {
     const layerDef = layersDefs.filter((item) => item.title === 'MapMagic')[0];
     assert.isFalse(layerDef.layer.options.isOverlay);
     assert.equal(layerDef.layer.options.attribution, '<a href="https://mapmagic.app">MapMagic</a>');
+});
+
+test('MapMagic is the only default base layer', function () {
+    const defaultBaseLayers = layersDefs.filter((layerDef) => layerDef.layer.options.defaultBase);
+    assert.lengthOf(defaultBaseLayers, 1);
+    assert.equal(defaultBaseLayers[0].title, 'MapMagic');
 });
 
 test('MapMagic layer is in the OpenStreetMap alternatives group after OpenTopoMap', function () {

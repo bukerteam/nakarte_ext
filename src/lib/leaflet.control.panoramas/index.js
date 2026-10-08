@@ -80,6 +80,7 @@ L.Control.Panoramas = L.Control.extend({
             splitVerically: true,
             splitSizeFraction: 0.5,
             minViewerSize: 30,
+            enabledByDefault: false,
         },
 
         getProviders: function() {
@@ -150,12 +151,14 @@ L.Control.Panoramas = L.Control.extend({
             this._splitVerically = storedSettings?.spitVertically ?? this.options.splitVerically;
             const fraction = storedSettings?.splitSizeFraction;
             this._splitSizeFraction = isNaN(fraction) ? this.options.splitSizeFraction : fraction;
+            this._controlEnabledByDefault = storedSettings?.enabled ?? this.options.enabledByDefault;
         },
 
         saveSetting: function() {
             safeLocalStorage.panoramaSettings = JSON.stringify({
                 spitVertically: this._splitVerically,
-                splitSizeFraction: this._splitSizeFraction
+                splitSizeFraction: this._splitSizeFraction,
+                enabled: this.controlEnabled,
             });
         },
 
@@ -228,6 +231,7 @@ L.Control.Panoramas = L.Control.extend({
             } else {
                 this.enableControl();
             }
+            this.saveSetting();
         },
 
         onKeyUp: function(e) {
@@ -496,7 +500,12 @@ L.Control.Panoramas.include({
 
         unserializeState: function(state) {
             if (!state) {
-                this.disableControl();
+                // without a hash state the control is enabled when it is configured as default
+                if (this._controlEnabledByDefault) {
+                    this.enableControl();
+                } else {
+                    this.disableControl();
+                }
                 return true;
             }
 

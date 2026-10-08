@@ -162,7 +162,7 @@ function setUp() { // eslint-disable-line complexity
 
     new L.Control.TrackList.Ruler(tracklist).addTo(map);
 
-     const panoramas = new L.Control.Panoramas()
+     const panoramas = new L.Control.Panoramas({enabledByDefault: config.panoramasEnabledByDefault})
         .addTo(map)
         .enableHashState('n2');
     L.Control.Panoramas.hashStateUpgrader(panoramas).enableHashState('n');
