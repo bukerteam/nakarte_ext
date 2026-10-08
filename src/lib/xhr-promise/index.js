@@ -9,12 +9,17 @@ function retryIfNetworkErrorOrServerError(xhr) {
 }
 
 class XMLHttpRequestPromiseError extends Error {
-    constructor(xhr) {
+    constructor(xhr, timedOut = false) {
         super();
         this.xhr = xhr;
+        this.timedOut = timedOut;
         this.name = 'XMLHttpRequestPromiseError';
 
-        this.message = xhr.status === 0 ? 'network error' : `server response is ${xhr.status}`;
+        if (xhr.status === 0) {
+            this.message = timedOut ? 'request timed out' : 'network error';
+        } else {
+            this.message = `server response is ${xhr.status}`;
+        }
     }
 }
 
@@ -42,6 +47,10 @@ class XMLHttpRequestPromise {
 
         const xhr = this.xhr = new XMLHttpRequest();
         xhr.onreadystatechange = () => this._onreadystatechange();
+        xhr.ontimeout = () => {
+            this._timedOut = true;
+        };
+        this._timedOut = false;
         this._open();
         xhr.timeout = timeout;
         if (responseType === 'binarystring') {
@@ -91,7 +100,7 @@ class XMLHttpRequestPromise {
                     this._timerId = setTimeout(() => this.send(), this._retryTimeWait);
                 } else {
                     // console.log('failed', this.url);
-                    this._reject(new XMLHttpRequestPromiseError(xhr));
+                    this._reject(new XMLHttpRequestPromiseError(xhr, this._timedOut));
                 }
             }
         }
@@ -106,6 +115,7 @@ class XMLHttpRequestPromise {
 
     send() {
         // console.log('send', this.url);
+        this._timedOut = false;
         this.triesLeft -= 1;
         this.xhr.send(this.postData);
     }
