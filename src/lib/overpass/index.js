@@ -2,7 +2,7 @@ import {Cache as ResponseCache} from '~/lib/cache';
 import {fetch} from '~/lib/xhr-promise';
 
 const defaultMaxPoints = 2000;
-const defaultTimeout = 35000;
+const defaultTimeout = 45000;
 const persistentCacheKey = 'overpassResponseCache';
 const persistentCacheTtl = 10 * 60 * 1000;
 const persistentCacheMaxEntries = 5;
@@ -313,7 +313,10 @@ class OverpassClient {
                 if (!retryable || attempt >= this._retryDelays.length) {
                     throw e;
                 }
-                this._handleRetryableFailure(responseStatus);
+                // a timed out endpoint is slow, not necessarily dead: retry it instead of switching
+                if (!e?.timedOut) {
+                    this._handleRetryableFailure(responseStatus);
+                }
                 await delay(this._retryDelays[attempt]);
             }
         }

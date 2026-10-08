@@ -492,6 +492,38 @@ test('falls back to the next endpoint and remembers it', async function () {
     }
 });
 
+test('a timed out endpoint is retried instead of switching to the fallback', async function () {
+    // eslint-disable-next-line global-require
+    const overpassRewire = require('~/lib/overpass');
+    const originalFetch = overpassRewire.__get__('fetch');
+    const calls = [];
+    overpassRewire.__set__('fetch', (url) => {
+        calls.push(url);
+        if (calls.length === 1) {
+            const promise = Promise.reject(
+                Object.assign(new Error('request timed out'), {xhr: {status: 0}, timedOut: true})
+            );
+            promise.abort = () => {
+                // emulate the abort of xhr-promise
+            };
+            return promise;
+        }
+        const promise = Promise.resolve({responseJSON: {elements: []}});
+        promise.abort = () => {
+            // emulate the abort of xhr-promise
+        };
+        return promise;
+    });
+    try {
+        const client = new overpass.OverpassClient(['http://a/', 'http://b/'], {retryDelays: [0]});
+        await client.query('q').promise;
+        assert.deepEqual(calls, ['http://a/', 'http://a/']);
+        assert.equal(client.getActiveUrl(), 'http://a/');
+    } finally {
+        overpassRewire.__set__('fetch', originalFetch);
+    }
+});
+
 test('prefers the remembered endpoint', function () {
     assert.deepEqual(overpass.orderOverpassUrls(['http://a/', 'http://b/'], 'http://b/'), ['http://b/', 'http://a/']);
     assert.deepEqual(overpass.orderOverpassUrls(['http://a/', 'http://b/'], 'http://c/'), ['http://a/', 'http://b/']);
