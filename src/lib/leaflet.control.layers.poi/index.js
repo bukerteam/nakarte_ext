@@ -37,6 +37,7 @@ class PoiPanelModel {
         this.closeText = t('Закрыть', 'Close');
         this.nextgisKey = ko.observable('');
         this.siteKeyActive = ko.observable(false);
+        this.sourceText = ko.observable('');
         this.nextgisKeyPlaceholder = t('Ключ NextGIS (необязательно)', 'NextGIS key (optional)');
         this.nextgisKeyHint = ko.pureComputed(() => {
             if (this.nextgisKey().trim()) {
@@ -199,7 +200,12 @@ function enablePoi(control, poiOptions = {}) {
             this._poiModel.nextgisKey(getUserKey() ?? '');
             this._poiModel.siteKeyActive(Boolean(!getUserKey() && getEffectiveKey()));
             this._poiModel.onNextgisKeyChange = (key) => this._onNextgisKeyChanged(key);
-            this._poiLayer.on('loadstate', (e) => this._poiModel.status(this._getPoiStatusText(e)));
+            // save the value as it is typed, so that a reload right after pasting keeps the key
+            this._poiModel.nextgisKey.subscribe((key) => setUserKey(key));
+            this._poiLayer.on('loadstate', (e) => {
+                this._poiModel.status(this._getPoiStatusText(e));
+                this._poiModel.sourceText(this._getPoiSourceText(e));
+            });
             this._poiLayer.on('countschanged', (e) => this._poiModel.updateCounts(e.counts));
             this._injectPoiButton();
             this._initPoiWindow();
@@ -403,6 +409,26 @@ function enablePoi(control, poiOptions = {}) {
                 default:
                     return '';
             }
+        },
+
+        /*
+         Shows which interpreter served the load, so that it is clear whether the key works.
+         */
+        _getPoiSourceText: function (e) {
+            if (e.state !== 'loaded' && e.state !== 'limit') {
+                return '';
+            }
+            const url = this._poiLayer?.getWorkingUrl?.() ?? '';
+            if (url.includes('overpass.nextgis.com')) {
+                return 'NextGIS';
+            }
+            if (url.includes('maps.mail.ru')) {
+                return t('зеркало VK Maps', 'VK Maps mirror');
+            }
+            if (url.includes('overpass-api.de')) {
+                return 'overpass-api.de';
+            }
+            return '';
         },
     });
 }

@@ -7,8 +7,17 @@ const runtimeConfigUrl = 'config.json';
 
 let runtimeKey = null;
 
-function normalizeKey(key) {
-    return typeof key === 'string' && key.trim() ? key.trim() : null;
+function normalizeKey(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+    // the NextGIS dashboard offers both the key and the ready endpoint url: accept both
+    const fromUrl = /overpass\.nextgis\.com\/([^/\s]+)/u.exec(trimmed);
+    return fromUrl ? fromUrl[1] : trimmed;
 }
 
 /*
