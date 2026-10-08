@@ -1,9 +1,9 @@
 import secrets from './secrets.json';
+import {buildOverpassUrls} from './lib/overpass/endpoints';
 
-// The NextGIS Overpass instance is used first when its API key is configured (see secrets.json.template).
-const overpassNextgisUrl = secrets.overpassNextgis
-    ? `https://overpass.nextgis.com/${secrets.overpassNextgis}/api/interpreter`
-    : null;
+// The build-time NextGIS key (see secrets.json.template) is only a fallback: the key can also be
+// entered by the user in the POI panel or supplied at runtime via config.json.
+const overpassUrls = buildOverpassUrls(secrets.overpassNextgis);
 
 const config = {
     caption: `
@@ -21,12 +21,10 @@ const config = {
     geocachingSuUrl: 'https://nakarte.me/geocachingSu/geocaching_su2.json',
     // overpass-api.de is overloaded (see its usage policy); the VK Maps instance answers faster
     // from Russia, so it is used by default. Any public or self-hosted Overpass endpoint can be
-    // configured here and in overpassApiFallbackUrls. The NextGIS instance is used first when an
-    // API key is configured (see secrets.json.template).
-    overpassApiUrl: overpassNextgisUrl ?? 'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-    overpassApiFallbackUrls: overpassNextgisUrl
-        ? ['https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass-api.de/api/interpreter']
-        : ['https://overpass-api.de/api/interpreter'],
+    // configured here and in overpassApiFallbackUrls. The NextGIS instance is used first when a
+    // key is available (see docs/deploy/README.md).
+    overpassApiUrl: overpassUrls[0],
+    overpassApiFallbackUrls: overpassUrls.slice(1),
     tracksStorageServer: 'https://tracks.nakarte.me',
     wikimapiaTilesBaseUrl: 'https://proxy.nakarte.me/wikimapia/',
     mapillaryRasterTilesUrl: 'https://mapillary.nakarte.me/{z}/{x}/{y}',

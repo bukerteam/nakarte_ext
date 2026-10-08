@@ -30,9 +30,17 @@
         </div>
     </div>
     <div class="poi-footer">
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
-            &copy; OpenStreetMap contributors
-        </a>
-        <span class="poi-footer-note">ODbL</span>
+        <div class="poi-overpass-key">
+            <input type="text" class="poi-key-input" maxlength="100"
+                data-bind="value: nextgisKey, attr: {placeholder: nextgisKeyPlaceholder},
+                    event: {change: onNextgisKeyChanged}"/>
+            <div class="poi-key-hint" data-bind="text: nextgisKeyHint"></div>
+        </div>
+        <div>
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
+                &copy; OpenStreetMap contributors
+            </a>
+            <span class="poi-footer-note">ODbL</span>
+        </div>
     </div>
 </div>

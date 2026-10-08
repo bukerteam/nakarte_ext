@@ -7,6 +7,7 @@ import {matchCategory, getCategory, poiCategories, poiGroups} from '~/lib/leafle
 import {getIconUrl} from '~/lib/leaflet.layer.poi/icons';
 import {getPoiName, getPoiOsmUrl, buildPoiPopupHtml, buildClusterPopupHtml} from '~/lib/leaflet.layer.poi/poi';
 import * as overpass from '~/lib/overpass';
+import {getEffectiveKey, getUserKey, setUserKey, getSiteKey} from '~/lib/overpass/key';
 import safeLocalStorage from '~/lib/safe-localstorage';
 
 suite('Overpass query builder');
@@ -1074,4 +1075,142 @@ test('popup without a valid osm element has no link', function () {
     const html = buildPoiPopupHtml({type: 'evil', id: 1, tags: {}}, category);
     assert.notInclude(html, 'openstreetmap.org/evil');
     assert.include(html, 'poi-popup-title');
+});
+
+suite('Overpass endpoints and key');
+
+test('builds the endpoint list with and without a NextGIS key', function () {
+    assert.deepEqual(overpass.buildOverpassUrls(null), [
+        'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
+    ]);
+    assert.deepEqual(overpass.buildOverpassUrls('abc'), [
+        'https://overpass.nextgis.com/abc/api/interpreter',
+        'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
+    ]);
+});
+
+test('the user key is stored in the browser and wins over the site key', function () {
+    safeLocalStorage.removeItem('overpassNextgisKey');
+    assert.equal(getEffectiveKey(), getSiteKey());
+    setUserKey(' user-key ');
+    assert.equal(getUserKey(), 'user-key');
+    assert.equal(getEffectiveKey(), 'user-key');
+    setUserKey('');
+    assert.isNull(getUserKey());
+});
+
+test('loads the NextGIS key from config.json', async function () {
+    // eslint-disable-next-line global-require
+    const keyModule = require('~/lib/overpass/key');
+    const originalFetch = keyModule.__get__('fetch');
+    function stubFetch(response) {
+        keyModule.__set__('fetch', () => {
+            const promise = Promise.resolve(response);
+            promise.abort = () => {
+                // emulate the abort of xhr-promise
+            };
+            return promise;
+        });
+    }
+    safeLocalStorage.removeItem('overpassNextgisKey');
+    try {
+        stubFetch({responseJSON: {overpassNextgis: 'runtime-key'}});
+        assert.equal(await keyModule.loadRuntimeKey(), 'runtime-key');
+        assert.equal(getEffectiveKey(), 'runtime-key');
+        // a missing or broken config.json clears the runtime key
+        stubFetch({responseJSON: null});
+        await keyModule.loadRuntimeKey();
+        assert.isNull(keyModule.__get__('getRuntimeKey')());
+    } finally {
+        keyModule.__set__('fetch', originalFetch);
+    }
+});
+
+test('setUrls switches the endpoints for new requests', async function () {
+    // eslint-disable-next-line global-require
+    const overpassRewire = require('~/lib/overpass');
+    const originalFetch = overpassRewire.__get__('fetch');
+    const calls = [];
+    overpassRewire.__set__('fetch', (url) => {
+        calls.push(url);
+        const promise = Promise.resolve({responseJSON: {elements: []}});
+        promise.abort = () => {
+            // emulate the abort of xhr-promise
+        };
+        return promise;
+    });
+    try {
+        const client = new overpass.OverpassClient('http://a/');
+        await client.query('q').promise;
+        client.setUrls(['http://b/', 'http://a/']);
+        await client.query('q2').promise;
+        assert.deepEqual(calls, ['http://a/', 'http://b/']);
+        assert.equal(client.getActiveUrl(), 'http://b/');
+    } finally {
+        overpassRewire.__set__('fetch', originalFetch);
+    }
+});
+
+test('setOverpassUrls updates the client and refetches the view', async function () {
+    const layer = makeUpdateLayer();
+    const applied = [];
+    const queries = [];
+    layer._client = {
+        setUrls: (urls) => applied.push(urls),
+        query: (queryString) => {
+            queries.push(queryString);
+            return {
+                promise: Promise.resolve({elements: []}),
+                abort: () => {
+                    // emulate the abort of xhr-promise
+                },
+            };
+        },
+    };
+    layer._categoryIds = ['spring'];
+    layer._loadedBounds = L.latLngBounds([49.6, 33.3], [49.9, 33.6]);
+    layer._loadedCategoryIds = new Set(['spring']);
+    layer.setOverpassUrls(['http://b/']);
+    assert.deepEqual(applied, [['http://b/']]);
+    assert.isNull(layer._loadedBounds);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.lengthOf(queries, 1);
+});
+
+test('the panel forwards the entered NextGIS key', function () {
+    const model = new PoiPanelModel(() => {
+        // selection change callback
+    });
+    let received = null;
+    model.onNextgisKeyChange = (key) => {
+        received = key;
+    };
+    model.nextgisKey('abc');
+    model.onNextgisKeyChanged();
+    assert.equal(received, 'abc');
+    assert.match(model.nextgisKeyHint(), /браузер|browser/u);
+});
+
+test('changing the NextGIS key in the panel rebuilds the endpoints', function () {
+    safeLocalStorage.removeItem('overpassNextgisKey');
+    const control = {};
+    enablePoi(control);
+    control._poiModel = new PoiPanelModel(() => {
+        // selection change callback
+    });
+    const applied = [];
+    control._poiLayer = {setOverpassUrls: (urls) => applied.push(urls)};
+    control._overpassUrls = ['http://a/'];
+    control._onNextgisKeyChanged('my-key');
+    assert.equal(getUserKey(), 'my-key');
+    assert.deepEqual(applied, [
+        [
+            'https://overpass.nextgis.com/my-key/api/interpreter',
+            'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+            'https://overpass-api.de/api/interpreter',
+        ],
+    ]);
+    setUserKey('');
 });

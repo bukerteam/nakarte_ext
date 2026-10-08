@@ -9,7 +9,8 @@ import {PoiLayer} from '~/lib/leaflet.layer.poi';
 import {poiGroups, poiCategories} from '~/lib/leaflet.layer.poi/categories';
 import {getIconUrl} from '~/lib/leaflet.layer.poi/icons';
 import * as logging from '~/lib/logging';
-import {orderOverpassUrls} from '~/lib/overpass';
+import {orderOverpassUrls, buildOverpassUrls} from '~/lib/overpass';
+import {getEffectiveKey, getUserKey, loadRuntimeKey, setUserKey} from '~/lib/overpass/key';
 import safeLocalStorage from '~/lib/safe-localstorage';
 
 import layout from './control.html';
@@ -34,6 +35,18 @@ class PoiPanelModel {
         this.selectAllText = t('Выбрать все', 'Select all');
         this.clearAllText = t('Снять все', 'Clear all');
         this.closeText = t('Закрыть', 'Close');
+        this.nextgisKey = ko.observable('');
+        this.siteKeyActive = ko.observable(false);
+        this.nextgisKeyPlaceholder = t('Ключ NextGIS (необязательно)', 'NextGIS key (optional)');
+        this.nextgisKeyHint = ko.pureComputed(() => {
+            if (this.nextgisKey().trim()) {
+                return t('Ключ сохранён в этом браузере', 'The key is stored in this browser');
+            }
+            if (this.siteKeyActive()) {
+                return t('Используется ключ сайта', 'The site key is used');
+            }
+            return t('Ключ ускоряет загрузку POI', 'The key speeds up POI loading');
+        });
         this.groups = poiGroups.map((group) => this._createGroupModel(group));
         this.allCategories = [];
         for (const group of this.groups) {
@@ -142,6 +155,12 @@ class PoiPanelModel {
     onClose() {
         this.visible(false);
     }
+
+    onNextgisKeyChanged() {
+        if (this.onNextgisKeyChange) {
+            this.onNextgisKeyChange(this.nextgisKey());
+        }
+    }
 }
 
 function enablePoi(control, poiOptions = {}) {
@@ -166,20 +185,78 @@ function enablePoi(control, poiOptions = {}) {
             if (this._poiLayer) {
                 return;
             }
-            const configuredUrls = (poiOptions.overpassUrls ?? []).filter(Boolean);
-            const overpassUrls = orderOverpassUrls(configuredUrls, this._loadRememberedOverpassUrl(configuredUrls));
+            this._overpassUrls = this._getOverpassUrls();
+            const overpassUrls = orderOverpassUrls(
+                this._overpassUrls,
+                this._loadRememberedOverpassUrl(this._overpassUrls)
+            );
             this._poiLayer = new PoiLayer(overpassUrls, {
                 ...(poiOptions.layerOptions ?? {}),
-                onOverpassUrlChange: (url) => this._saveRememberedOverpassUrl(url, configuredUrls),
+                onOverpassUrlChange: (url) => this._saveRememberedOverpassUrl(url, this._overpassUrls),
                 cacheStorage: safeLocalStorage,
             });
             this._poiModel = new PoiPanelModel(() => this._onPoiSelectionChanged());
+            this._poiModel.nextgisKey(getUserKey() ?? '');
+            this._poiModel.siteKeyActive(Boolean(!getUserKey() && getEffectiveKey()));
+            this._poiModel.onNextgisKeyChange = (key) => this._onNextgisKeyChanged(key);
             this._poiLayer.on('loadstate', (e) => this._poiModel.status(this._getPoiStatusText(e)));
             this._poiLayer.on('countschanged', (e) => this._poiModel.updateCounts(e.counts));
             this._injectPoiButton();
             this._initPoiWindow();
             this._loadPoiSettings();
             hashState.addEventListener(hashKey, (values) => this._onPoiHashChanged(values));
+            this._loadRuntimeOverpassKey();
+        },
+
+        /*
+         Returns the Overpass endpoints to use: with a key (user, runtime config or build time) the
+         NextGIS instance comes first, otherwise the endpoints from the options.
+         */
+        _getOverpassUrls: function () {
+            const key = getEffectiveKey();
+            if (key) {
+                return buildOverpassUrls(key);
+            }
+            return (poiOptions.overpassUrls ?? []).filter(Boolean);
+        },
+
+        _onNextgisKeyChanged: function (key) {
+            setUserKey(key);
+            this._applyOverpassUrls();
+            if (this._poiModel) {
+                this._poiModel.siteKeyActive(Boolean(!getUserKey() && getEffectiveKey()));
+            }
+        },
+
+        /*
+         Applies the endpoint list when the effective key changed, and refetches the current view.
+         */
+        _applyOverpassUrls: function () {
+            if (!this._poiLayer) {
+                return;
+            }
+            const urls = this._getOverpassUrls();
+            const previous = this._overpassUrls ?? [];
+            if (urls.length === previous.length && urls.every((url, index) => url === previous[index])) {
+                return;
+            }
+            this._overpassUrls = urls;
+            this._poiLayer.setOverpassUrls(orderOverpassUrls(urls, this._loadRememberedOverpassUrl(urls)));
+        },
+
+        /*
+         config.json next to the site may provide a key; the user key has priority over it.
+         */
+        _loadRuntimeOverpassKey: function () {
+            loadRuntimeKey().then(() => {
+                if (getUserKey()) {
+                    return;
+                }
+                this._applyOverpassUrls();
+                if (this._poiModel) {
+                    this._poiModel.siteKeyActive(Boolean(getEffectiveKey()));
+                }
+            });
         },
 
         _loadRememberedOverpassUrl: function (configuredUrls) {

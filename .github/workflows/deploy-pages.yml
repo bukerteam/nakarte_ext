@@ -24,16 +24,15 @@ jobs:
           node-version: '24'
           cache: 'yarn'
       - run: yarnpkg
-      - name: create src/secrets.json
+      - run: cp src/secrets.json.template src/secrets.json
+      - run: npm run build
+      - name: create build/config.json
         env:
           OVERPASS_NEXTGIS_KEY: ${{ secrets.OVERPASS_NEXTGIS_KEY }}
         run: |
-          cp src/secrets.json.template src/secrets.json
           if [ -n "$OVERPASS_NEXTGIS_KEY" ]; then
-            jq --arg key "$OVERPASS_NEXTGIS_KEY" '.overpassNextgis = $key' src/secrets.json > src/secrets.json.new
-            mv src/secrets.json.new src/secrets.json
+            jq -n --arg key "$OVERPASS_NEXTGIS_KEY" '{overpassNextgis: $key}' > build/config.json
           fi
-      - run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
