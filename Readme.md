@@ -25,3 +25,7 @@
 - [Прокладка маршрутов](docs/route-planning/README.md)
 - [Работа с точками треков](docs/track-points/README.md)
 - [Слои POI из OpenStreetMap](docs/poi/README.md)
+
+## Развёртывание
+
+[Публикация сайта на GitHub Pages](docs/deploy/README.md)
