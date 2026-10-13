@@ -2,13 +2,11 @@ import L from 'leaflet';
 
 import '~/lib/leaflet.layer.canvasMarkers'; // eslint-disable-line import/no-unassigned-import
 import './style.css';
-import {t} from '~/lib/lang';
 import * as logging from '~/lib/logging';
 import {OverpassClient, buildOverpassQuery, parseOverpassResponse} from '~/lib/overpass';
 
 import {getCategory, matchCategory} from './categories';
-import {getIconUrl} from './icons';
-import {buildClusterPopupHtml, buildPoiPopupHtml, getPoiName} from './poi';
+import {buildPoiPopupHtml, createPoiMarker, handleClusterClick, updateIconScale} from './poi';
 
 /*
  Persistent layer with OSM POIs loaded from Overpass API for the current map view.
@@ -143,12 +141,7 @@ const PoiLayer = L.Layer.CanvasMarkers.extend({
     },
 
     _updateIconScale: function (zoom) {
-        const {iconScaleRefZoom, iconScaleMin, iconScaleMax} = this.options;
-        const scale = Math.max(iconScaleMin, Math.min(iconScaleMax, 2 ** (zoom - iconScaleRefZoom)));
-        if (this.options.iconScale !== scale) {
-            this.options.iconScale = scale;
-            this.resetLabels();
-        }
+        updateIconScale(this, zoom);
     },
 
     _abortRequest: function () {
@@ -318,12 +311,7 @@ const PoiLayer = L.Layer.CanvasMarkers.extend({
     },
 
     _createMarker: function (poi, category) {
-        return {
-            latlng: L.latLng(poi.lat, poi.lon),
-            icon: {url: getIconUrl(category.icon)},
-            tooltip: getPoiName(poi.tags) || t('Без названия', 'Unnamed'),
-            properties: {poi, category},
-        };
+        return createPoiMarker(poi, category);
     },
 
     _onMarkerClick: function (e) {
@@ -332,14 +320,7 @@ const PoiLayer = L.Layer.CanvasMarkers.extend({
         }
         const marker = e.marker;
         if (marker._cluster) {
-            const {bounds} = marker._cluster;
-            if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
-                this._map.openPopup(buildClusterPopupHtml(marker._cluster), marker.latlng, {maxWidth: 400});
-            } else {
-                this._map.fitBounds(bounds, {
-                    maxZoom: Math.min(this.options.disableClusterAtZoom, this._map.getMaxZoom()),
-                });
-            }
+            handleClusterClick(this._map, marker, this.options.disableClusterAtZoom);
             return;
         }
         const {poi, category} = marker.properties;

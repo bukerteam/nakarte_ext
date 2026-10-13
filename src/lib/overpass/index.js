@@ -83,6 +83,13 @@ function normalizeBboxParts([south, west, north, east]) {
     if (east - west >= 360) {
         return [[s, -180, n, 180]];
     }
+    // the tracks loaded from files keep their longitudes unwrapped, a bbox may lie beyond ±180
+    if (west > 180) {
+        return [[s, west - 360, n, east - 360]];
+    }
+    if (east < -180) {
+        return [[s, west + 360, n, east + 360]];
+    }
     if (west >= -180 && east <= 180) {
         return [[s, west, n, east]];
     }

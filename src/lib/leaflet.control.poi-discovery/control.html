@@ -1,0 +1,142 @@
+<div class="poi-discovery-window">
+    <div class="poi-discovery-header">
+        <span class="poi-discovery-title" data-bind="text: title"></span>
+        <button type="button" class="poi-discovery-close"
+            data-bind="click: onClose, attr: {title: closeText, 'aria-label': closeText}">&times;</button>
+    </div>
+    <div class="poi-discovery-modes">
+        <button type="button" class="poi-discovery-mode"
+            data-bind="click: onAreaMode, css: {active: mode() === 'area'}, text: areaModeText"></button>
+        <button type="button" class="poi-discovery-mode"
+            data-bind="click: onCorridorMode, css: {active: mode() === 'corridor'}, text: corridorModeText"></button>
+    </div>
+    <div class="poi-discovery-params" data-bind="visible: mode() === 'area'">
+        <div class="poi-discovery-row">
+            <button type="button" class="poi-discovery-search-button"
+                data-bind="click: onSearchArea, text: searchButtonText"></button>
+            <button type="button" class="poi-discovery-area-button"
+                data-bind="click: onToggleRectangle, css: {active: rectangleActive()},
+                    text: selectRectangleText"></button>
+        </div>
+        <div class="poi-discovery-hint" data-bind="text: areaHint"></div>
+    </div>
+    <div class="poi-discovery-params" data-bind="visible: mode() === 'corridor'">
+        <div class="poi-discovery-row">
+            <label class="poi-discovery-field poi-discovery-track-field">
+                <span class="poi-discovery-field-label" data-bind="text: trackLabel"></span>
+                <select class="poi-discovery-track"
+                    data-bind="options: trackOptions, optionsText: trackOptionText, value: selectedTrack,
+                        optionsCaption: selectTrackText"></select>
+            </label>
+        </div>
+        <div class="poi-discovery-row">
+            <label class="poi-discovery-field">
+                <span class="poi-discovery-field-label" data-bind="text: widthLabel"></span>
+                <input type="number" min="10" step="10" data-bind="value: width"/>
+            </label>
+            <label class="poi-discovery-field">
+                <span class="poi-discovery-field-label" data-bind="text: startKmLabel"></span>
+                <input type="number" min="0" step="0.5" data-bind="value: startKm"/>
+            </label>
+            <label class="poi-discovery-field">
+                <span class="poi-discovery-field-label" data-bind="text: endKmLabel"></span>
+                <input type="number" min="0" step="0.5" data-bind="value: endKm"/>
+            </label>
+            <button type="button" class="poi-discovery-search-button"
+                data-bind="click: onSearchCorridor, text: searchButtonText"></button>
+        </div>
+        <div class="poi-discovery-hint" data-bind="text: corridorHint, visible: corridorHint"></div>
+    </div>
+    <div class="poi-discovery-sources">
+        <div class="poi-discovery-sources-title" data-bind="text: sourcesTitle"></div>
+        <div class="poi-discovery-source-list" data-bind="foreach: sources">
+            <label class="poi-discovery-source" data-bind="attr: {title: title}">
+                <input type="checkbox"
+                    data-bind="checked: enabled, event: {change: onChanged}"/>
+                <span class="poi-discovery-source-title" data-bind="text: title"></span>
+                <span class="poi-discovery-source-hint" data-bind="text: hint, visible: hint"></span>
+            </label>
+        </div>
+        <label class="poi-discovery-source-field">
+            <span class="poi-discovery-source-label" data-bind="text: inatUsernameLabel"></span>
+            <input type="text" class="poi-discovery-inat-user" maxlength="60"
+                data-bind="textInput: inatUsername, attr: {placeholder: inatUsernameLabel},
+                    event: {change: onInatUsernameChanged}"/>
+            <span class="poi-discovery-source-hint" data-bind="text: inatUsernameHint"></span>
+        </label>
+    </div>
+    <div class="poi-discovery-error" data-bind="text: error, visible: error"></div>
+    <div class="poi-discovery-progress" data-bind="visible: searching">
+        <div class="poi-discovery-progress-track">
+            <div class="poi-discovery-progress-bar" data-bind="style: {width: progressWidth}"></div>
+        </div>
+        <span class="poi-discovery-progress-text" data-bind="text: progressText"></span>
+    </div>
+    <div class="poi-discovery-status" data-bind="text: status, visible: status"></div>
+    <div class="poi-discovery-warning" data-bind="text: warning, visible: warning"></div>
+    <div class="poi-discovery-tabs">
+        <button type="button" class="poi-discovery-tab"
+            data-bind="click: onCategoriesTab, css: {active: activeTab() === 'categories'},
+                text: categoriesTabText"></button>
+        <button type="button" class="poi-discovery-tab"
+            data-bind="click: onResultsTab, css: {active: activeTab() === 'results'},
+                text: resultsTabText"></button>
+    </div>
+    <div class="poi-discovery-tab-content">
+        <div class="poi-discovery-categories" data-bind="visible: activeTab() === 'categories'">
+            <input type="search" class="poi-discovery-search" maxlength="200"
+                data-bind="textInput: categories.query, attr: {placeholder: searchPlaceholder}"/>
+            <div class="poi-discovery-category-groups" data-bind="foreach: categories.visibleGroups">
+                <div class="poi-group">
+                    <div class="poi-group-header">
+                        <a href="#" class="poi-group-toggle" data-bind="click: onToggleExpanded,
+                            clickBubble: false, css: {expanded: expanded()},
+                            attr: {'aria-label': title}"></a>
+                        <label class="poi-group-select">
+                            <input type="checkbox" data-bind="checked: allSelected, indeterminate: someSelected"/>
+                            <span class="poi-group-title" data-bind="text: title"></span>
+                        </label>
+                    </div>
+                    <div class="poi-categories" data-bind="foreach: categories, visible: expanded">
+                        <label class="poi-category" data-bind="attr: {title: tooltip}">
+                            <input type="checkbox" data-bind="checked: selected, event: {change: onChanged}"/>
+                            <img class="poi-category-icon" alt="" data-bind="attr: {src: iconUrl}"/>
+                            <span class="poi-category-title" data-bind="text: title"></span>
+                            <span class="poi-category-count" data-bind="text: countText, visible: countText"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="poi-discovery-results" data-bind="visible: activeTab() === 'results'">
+            <div class="poi-discovery-results-header">
+                <span class="poi-discovery-results-count" data-bind="text: resultsText"></span>
+                <a href="#" class="poi-discovery-link"
+                    data-bind="click: onSelectAllResults, text: selectAllResultsText, clickBubble: false"></a>
+                <a href="#" class="poi-discovery-link"
+                    data-bind="click: onClearResultsSelection, text: clearResultsText, clickBubble: false"></a>
+                <a href="#" class="poi-discovery-link poi-discovery-clear"
+                    data-bind="click: onClear, text: clearText, clickBubble: false"></a>
+            </div>
+            <div class="poi-discovery-result-list" data-bind="foreach: results">
+                <div class="poi-discovery-result">
+                    <input type="checkbox" data-bind="checked: kept"/>
+                    <span class="poi-discovery-result-content" data-bind="click: onClick,
+                        attr: {title: name}">
+                        <img class="poi-category-icon" alt="" data-bind="attr: {src: iconUrl}"/>
+                        <span class="poi-discovery-result-name" data-bind="text: name"></span>
+                        <span class="poi-discovery-result-category" data-bind="text: categoryTitle"></span>
+                        <span class="poi-discovery-result-info" data-bind="text: infoText, visible: infoText"></span>
+                    </span>
+                </div>
+            </div>
+            <div class="poi-discovery-empty"
+                data-bind="text: emptyResultsText, visible: !results().length"></div>
+            <button type="button" class="poi-discovery-save"
+                data-bind="click: onSaveSelected, text: saveText, enable: keptCount() > 0"></button>
+        </div>
+    </div>
+    <div class="poi-discovery-footer">
+        <span class="poi-discovery-attribution" data-bind="text: attributionText"></span>
+    </div>
+</div>

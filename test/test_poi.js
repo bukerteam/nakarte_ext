@@ -1079,6 +1079,13 @@ test('uses a single part for a bbox spanning the whole world', function () {
     assert.lengthOf(query.match(/nwr\[/gu), 1);
 });
 
+test('keeps a bbox beyond the antimeridian valid', function () {
+    const query = overpass.buildOverpassQuery([{natural: 'spring'}], [0, 180.4, 1, 180.7]);
+    assert.include(query, 'nwr["natural"="spring"](0.00000,-179.60000,1.00000,-179.30000);');
+    const westQuery = overpass.buildOverpassQuery([{natural: 'spring'}], [0, -180.7, 1, -180.4]);
+    assert.include(westQuery, 'nwr["natural"="spring"](0.00000,179.30000,1.00000,179.60000);');
+});
+
 test('clamps the bbox to the poles', function () {
     const query = overpass.buildOverpassQuery([{natural: 'spring'}], [-100, 10, 100, 20]);
     assert.include(query, '(-90.00000,10.00000,90.00000,20.00000);');

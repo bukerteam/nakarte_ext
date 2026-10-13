@@ -1,0 +1,461 @@
+.leaflet-control-layers-top-row .button.icon-poi-discovery {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: white;
+    float: left;
+    background-image: url("poi-discovery.svg");
+    background-position: 50% 50%;
+    background-repeat: no-repeat;
+    background-size: 16px 16px;
+    margin-right: 4px;
+}
+
+.leaflet-control-layers-top-row .button.icon-poi-discovery.poi-discovery-active {
+    background-color: #dce9f7;
+    border-color: #2a6fbb;
+}
+
+.leaflet-poi-discovery-dialog-wrapper {
+    position: absolute;
+    box-sizing: border-box;
+    z-index: 3000;
+    top: 40px;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 100%;
+    padding-bottom: 50px;
+}
+
+.poi-discovery-window {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 340px;
+    max-width: 460px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+    color: #333;
+}
+
+.poi-discovery-header {
+    display: flex;
+    align-items: center;
+    padding: 6px;
+    border-bottom: 1px solid #eee;
+    cursor: move;
+}
+
+.poi-discovery-title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.poi-discovery-close {
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 20px;
+    line-height: 20px;
+    padding: 0 6px;
+    color: #666;
+    background: none;
+    border: 0;
+}
+
+.poi-discovery-modes {
+    display: flex;
+    padding: 4px 6px;
+    border-bottom: 1px solid #eee;
+}
+
+.poi-discovery-mode {
+    flex: 1;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: white;
+    color: #333;
+}
+
+.poi-discovery-mode + .poi-discovery-mode {
+    margin-left: 4px;
+}
+
+.poi-discovery-mode.active {
+    background-color: #dce9f7;
+    border-color: #2a6fbb;
+}
+
+.poi-discovery-params {
+    padding: 4px 6px;
+    border-bottom: 1px solid #eee;
+}
+
+.poi-discovery-row {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.poi-discovery-field {
+    display: flex;
+    flex-direction: column;
+    margin-right: 6px;
+    font-size: 11px;
+    color: #555;
+}
+
+.poi-discovery-field input {
+    box-sizing: border-box;
+    width: 64px;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.poi-discovery-track-field {
+    flex: 1;
+    min-width: 0;
+}
+
+.poi-discovery-track {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.poi-discovery-search-button {
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid #2a6fbb;
+    border-radius: 3px;
+    background-color: #2a6fbb;
+    color: white;
+}
+
+.poi-discovery-search-button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.poi-discovery-area-button {
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    margin-left: 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: white;
+    color: #333;
+}
+
+.poi-discovery-area-button.active {
+    background-color: #dce9f7;
+    border-color: #2a6fbb;
+}
+
+.poi-discovery-hint {
+    margin-top: 3px;
+    color: #999;
+    font-size: 11px;
+}
+
+.poi-discovery-error {
+    padding: 4px 6px;
+    color: #b3261e;
+    font-size: 12px;
+}
+
+.poi-discovery-sources {
+    padding: 4px 6px;
+    border-bottom: 1px solid #eee;
+}
+
+.poi-discovery-sources-title {
+    margin-bottom: 2px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.poi-discovery-source-list {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.poi-discovery-source {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.poi-discovery-source-title {
+    margin-left: 2px;
+}
+
+.poi-discovery-source-hint {
+    margin-left: 4px;
+    color: #999;
+    font-size: 10px;
+}
+
+.poi-discovery-source-field {
+    display: flex;
+    flex-direction: column;
+    margin-top: 2px;
+}
+
+.poi-discovery-source-label {
+    font-size: 11px;
+    color: #555;
+}
+
+.poi-discovery-inat-user {
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.poi-discovery-progress {
+    padding: 4px 6px 2px;
+}
+
+.poi-discovery-progress-track {
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background-color: #e6e6e6;
+}
+
+.poi-discovery-progress-bar {
+    height: 100%;
+    background-image: linear-gradient(90deg, #2a6fbb 0%, #7fb2e5 50%, #2a6fbb 100%);
+    background-size: 200% 100%;
+    animation: poi-discovery-progress 1.2s linear infinite;
+}
+
+@keyframes poi-discovery-progress {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -200% 0;
+    }
+}
+
+.poi-discovery-progress-text {
+    display: block;
+    margin-top: 2px;
+    color: #777;
+    font-size: 11px;
+}
+
+.poi-discovery-status {
+    padding: 2px 6px;
+    color: #777;
+    font-size: 11px;
+}
+
+.poi-discovery-warning {
+    padding: 2px 6px;
+    color: #a05a00;
+    font-size: 11px;
+}
+
+.poi-discovery-tabs {
+    display: flex;
+    padding: 4px 6px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.poi-discovery-tab {
+    flex: 1;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-bottom: 0;
+    border-radius: 3px 3px 0 0;
+    background-color: #f5f5f5;
+    color: #555;
+}
+
+.poi-discovery-tab + .poi-discovery-tab {
+    margin-left: 4px;
+}
+
+.poi-discovery-tab.active {
+    background-color: white;
+    border-color: #2a6fbb;
+    color: #2a6fbb;
+    font-weight: bold;
+}
+
+.poi-discovery-tab-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.poi-discovery-categories {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 4px 6px;
+}
+
+.poi-discovery-search {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 3px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+.poi-discovery-category-groups {
+    margin-top: 4px;
+    overflow-y: auto;
+}
+
+.poi-discovery-results {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 4px 6px;
+}
+
+.poi-discovery-results-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2px;
+    font-size: 11px;
+}
+
+.poi-discovery-results-count {
+    margin-right: 8px;
+    color: #777;
+}
+
+.poi-discovery-link {
+    margin-right: 8px;
+    color: #2a6fbb;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.poi-discovery-link:hover {
+    text-decoration: underline;
+}
+
+.poi-discovery-clear {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.poi-discovery-result-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.poi-discovery-result {
+    display: flex;
+    align-items: center;
+    padding: 1px 0;
+    font-size: 12px;
+}
+
+.poi-discovery-result-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.poi-discovery-result-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poi-discovery-result-content:hover .poi-discovery-result-name {
+    text-decoration: underline;
+}
+
+.poi-discovery-result-category {
+    margin-left: 6px;
+    color: #777;
+    font-size: 11px;
+}
+
+.poi-discovery-result-info {
+    margin-left: 6px;
+    color: #999;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.poi-discovery-empty {
+    padding: 8px 6px;
+    color: #999;
+    font-size: 12px;
+}
+
+.poi-discovery-save {
+    margin-top: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid #2a6fbb;
+    border-radius: 3px;
+    background-color: #2a6fbb;
+    color: white;
+}
+
+.poi-discovery-save:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.poi-discovery-footer {
+    padding: 4px 6px;
+    border-top: 1px solid #eee;
+    font-size: 11px;
+    color: #777;
+}
+
+.poi-discovery-attribution {
+    margin-left: 4px;
+}
+
+.poi-discovery-footer a {
+    color: #2a6fbb;
+}

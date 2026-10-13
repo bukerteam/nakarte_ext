@@ -6,30 +6,27 @@ import {t} from '~/lib/lang';
 import enableTopRow from '~/lib/leaflet.control.layers.top-row';
 import {hashState} from '~/lib/leaflet.hashState/hashState';
 import {PoiLayer} from '~/lib/leaflet.layer.poi';
-import {poiGroups, poiCategories} from '~/lib/leaflet.layer.poi/categories';
-import {getIconUrl} from '~/lib/leaflet.layer.poi/icons';
+import {poiCategories} from '~/lib/leaflet.layer.poi/categories';
+import {createCategoriesModel} from '~/lib/leaflet.layer.poi/categories-model';
 import * as logging from '~/lib/logging';
-import {orderOverpassUrls, buildOverpassUrls} from '~/lib/overpass';
-import {getEffectiveKey, getUserKey, loadRuntimeKey, setUserKey} from '~/lib/overpass/key';
+import {orderOverpassUrls} from '~/lib/overpass';
+import {getEffectiveKey, getUserKey, setUserKey} from '~/lib/overpass/key';
+import {
+    getOverpassUrls,
+    loadRememberedOverpassUrl,
+    loadRuntimeKeyOnce,
+    saveRememberedOverpassUrl,
+} from '~/lib/overpass/settings';
 import safeLocalStorage from '~/lib/safe-localstorage';
 
 import layout from './control.html';
 
 const storageKey = 'leafletPoiSettings';
-const overpassUrlStorageKey = 'leafletPoiOverpassUrl';
 const hashKey = 'poi';
-
-ko.bindingHandlers.indeterminate = {
-    update: function (element, valueAccessor) {
-        element.indeterminate = Boolean(ko.unwrap(valueAccessor()));
-    },
-};
 
 class PoiPanelModel {
     constructor(onSelectionChange) {
-        this._onSelectionChange = onSelectionChange;
         this.visible = ko.observable(false);
-        this.query = ko.observable('');
         this.status = ko.observable('');
         this.searchPlaceholder = t('Поиск категорий', 'Search categories');
         this.selectAllText = t('Выбрать все', 'Select all');
@@ -48,109 +45,32 @@ class PoiPanelModel {
             }
             return t('Ключ ускоряет загрузку POI', 'The key speeds up POI loading');
         });
-        this.groups = poiGroups.map((group) => this._createGroupModel(group));
-        this.allCategories = [];
-        for (const group of this.groups) {
-            this.allCategories.push(...group.categories);
-        }
-        this.visibleGroups = ko.pureComputed(() => this._filterGroups());
-    }
-
-    _createGroupModel(group) {
-        const categories = group.categories.map((category) => {
-            const model = {
-                id: category.id,
-                title: t(category.titleRu, category.titleEn),
-                searchText: `${category.titleRu} ${category.titleEn}`.toLowerCase(),
-                tooltip: `${category.titleRu} / ${category.titleEn}`,
-                iconUrl: getIconUrl(category.icon),
-                selected: ko.observable(false),
-                count: ko.observable(0),
-                countText: ko.pureComputed(() => (model.count() ? `(${model.count()})` : '')),
-                onChanged: () => this._onSelectionChange(),
-            };
-            return model;
-        });
-        return {
-            title: t(group.titleRu, group.titleEn),
-            searchText: `${group.titleRu} ${group.titleEn}`.toLowerCase(),
-            categories,
-            allSelected: this._createGroupSelection(categories),
-            someSelected: ko.pureComputed(() => {
-                const selectedCount = categories.filter((category) => category.selected()).length;
-                return selectedCount > 0 && selectedCount < categories.length;
-            }),
-        };
-    }
-
-    /*
-     Creates the tri-state checkbox model for a list of categories. Only the passed categories
-     are toggled, so a group header does not enable categories hidden by the search filter.
-     */
-    _createGroupSelection(categories) {
-        return ko.pureComputed({
-            read: () => categories.every((category) => category.selected()),
-            write: (value) => {
-                for (const category of categories) {
-                    category.selected(Boolean(value));
-                }
-                this._onSelectionChange();
-            },
-        });
-    }
-
-    _filterGroups() {
-        const query = this.query().trim().toLowerCase();
-        const result = [];
-        for (const group of this.groups) {
-            const groupMatches = query && group.searchText.includes(query);
-            const categories = groupMatches
-                ? group.categories
-                : group.categories.filter((category) => !query || category.searchText.includes(query));
-            if (categories.length) {
-                result.push({
-                    title: group.title,
-                    categories,
-                    allSelected: this._createGroupSelection(categories),
-                    someSelected: ko.pureComputed(() => {
-                        const selectedCount = categories.filter((category) => category.selected()).length;
-                        return selectedCount > 0 && selectedCount < categories.length;
-                    }),
-                });
-            }
-        }
-        return result;
+        this.categories = createCategoriesModel({onSelectionChange});
+        // the panel template and the tests use the category model fields directly
+        this.query = this.categories.query;
+        this.groups = this.categories.groups;
+        this.allCategories = this.categories.allCategories;
+        this.visibleGroups = this.categories.visibleGroups;
     }
 
     getSelectedIds() {
-        return this.allCategories.filter((category) => category.selected()).map((category) => category.id);
+        return this.categories.getSelectedIds();
     }
 
     setSelectedIds(ids) {
-        const selected = new Set(ids);
-        for (const category of this.allCategories) {
-            category.selected(selected.has(category.id));
-        }
+        this.categories.setSelectedIds(ids);
     }
 
     updateCounts(counts) {
-        for (const category of this.allCategories) {
-            category.count(counts[category.id] ?? 0);
-        }
+        this.categories.updateCounts(counts);
     }
 
     onSelectAll() {
-        for (const category of this.allCategories) {
-            category.selected(true);
-        }
-        this._onSelectionChange();
+        this.categories.onSelectAll();
     }
 
     onClearAll() {
-        for (const category of this.allCategories) {
-            category.selected(false);
-        }
-        this._onSelectionChange();
+        this.categories.onClearAll();
     }
 
     onClose() {
@@ -219,11 +139,7 @@ function enablePoi(control, poiOptions = {}) {
          NextGIS instance comes first, otherwise the endpoints from the options.
          */
         _getOverpassUrls: function () {
-            const key = getEffectiveKey();
-            if (key) {
-                return buildOverpassUrls(key);
-            }
-            return (poiOptions.overpassUrls ?? []).filter(Boolean);
+            return getOverpassUrls(poiOptions.overpassUrls ?? []);
         },
 
         _onNextgisKeyChanged: function (key) {
@@ -254,7 +170,7 @@ function enablePoi(control, poiOptions = {}) {
          config.json next to the site may provide a key; the user key has priority over it.
          */
         _loadRuntimeOverpassKey: function () {
-            loadRuntimeKey().then(() => {
+            loadRuntimeKeyOnce().then(() => {
                 if (getUserKey()) {
                     return;
                 }
@@ -266,25 +182,11 @@ function enablePoi(control, poiOptions = {}) {
         },
 
         _loadRememberedOverpassUrl: function (configuredUrls) {
-            try {
-                const stored = JSON.parse(safeLocalStorage.getItem(overpassUrlStorageKey) ?? 'null');
-                if (
-                    stored &&
-                    typeof stored.url === 'string' &&
-                    Array.isArray(stored.urls) &&
-                    stored.urls.length === configuredUrls.length &&
-                    stored.urls.every((url, index) => url === configuredUrls[index])
-                ) {
-                    return stored.url;
-                }
-            } catch (e) {
-                // the stored value is broken or from an older format, ignore it
-            }
-            return null;
+            return loadRememberedOverpassUrl(configuredUrls);
         },
 
         _saveRememberedOverpassUrl: function (url, configuredUrls) {
-            safeLocalStorage.setItem(overpassUrlStorageKey, JSON.stringify({url, urls: configuredUrls}));
+            saveRememberedOverpassUrl(url, configuredUrls);
         },
 
         _injectPoiButton: function () {

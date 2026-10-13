@@ -103,48 +103,6 @@
     padding: 4px 6px;
 }
 
-.poi-group {
-    margin-bottom: 6px;
-}
-
-.poi-group-header {
-    display: flex;
-    align-items: center;
-    font-weight: bold;
-    font-size: 13px;
-}
-
-.poi-group-title {
-    margin-left: 2px;
-}
-
-.poi-categories {
-    margin-left: 18px;
-}
-
-.poi-category {
-    display: flex;
-    align-items: center;
-    font-size: 12px;
-    cursor: pointer;
-    padding: 1px 0;
-}
-
-.poi-category-icon {
-    width: 16px;
-    height: 16px;
-    margin: 0 4px;
-}
-
-.poi-category-title {
-    flex: 1;
-}
-
-.poi-category-count {
-    color: #777;
-    margin-left: 4px;
-}
-
 .poi-footer {
     padding: 4px 6px;
     border-top: 1px solid #eee;
