@@ -1,0 +1,62 @@
+.poi-group {
+    margin-bottom: 6px;
+}
+
+.poi-group-header {
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.poi-group-toggle {
+    flex: none;
+    width: 0;
+    height: 0;
+    margin-right: 5px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid #666;
+    transition: transform 0.1s;
+}
+
+.poi-group-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.poi-group-select {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.poi-group-title {
+    margin-left: 2px;
+}
+
+.poi-categories {
+    margin-left: 18px;
+}
+
+.poi-category {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 1px 0;
+}
+
+.poi-category-icon {
+    width: 16px;
+    height: 16px;
+    margin: 0 4px;
+}
+
+.poi-category-title {
+    flex: 1;
+}
+
+.poi-category-count {
+    color: #777;
+    margin-left: 4px;
+}

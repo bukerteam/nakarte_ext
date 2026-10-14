@@ -20,6 +20,7 @@ import enableLayersControlAdaptiveHeight from '~/lib/leaflet.control.layers.adap
 import enableLayersMinimize from '~/lib/leaflet.control.layers.minimize';
 import enableLayersConfig from '~/lib/leaflet.control.layers.configure';
 import enableLayersPoi from '~/lib/leaflet.control.layers.poi';
+import enablePoiDiscovery from '~/lib/leaflet.control.poi-discovery';
 import raiseControlsOnFocus from '~/lib/leaflet.controls.raise-on-focus';
 import {getLayers} from './layers';
 import '~/lib/leaflet.control.layers.events';
@@ -196,6 +197,10 @@ function setUp() { // eslint-disable-line complexity
     enableLayersMinimize(layersControl);
     enableLayersConfig(layersControl, getLayers(), {withHotkeys: areHotkeysEnabled});
     enableLayersPoi(layersControl, {
+        overpassUrls: [config.overpassApiUrl, ...(config.overpassApiFallbackUrls ?? [])],
+    });
+    enablePoiDiscovery(layersControl, {
+        tracklist,
         overpassUrls: [config.overpassApiUrl, ...(config.overpassApiFallbackUrls ?? [])],
     });
     layersControl.addTo(map);

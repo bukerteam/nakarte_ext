@@ -56,7 +56,9 @@ function waypointToGpxPoint(marker, withElevations) {
         fields: getPointFields(meta, {
             ele: getPointElevation(marker.latlng.alt, meta, withElevations),
             time: meta.time,
-            name: marker.label,
+            // the label is the point name on the map, the metadata keeps the name of a point
+            // without a label (for example a POI saved without its own OSM name)
+            name: marker.label || meta.name,
         }),
     };
 }
