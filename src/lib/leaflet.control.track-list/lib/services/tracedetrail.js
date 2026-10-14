@@ -2,6 +2,15 @@ import BaseService from './baseService';
 import {urlViaCorsProxy} from '~/lib/CORSProxy';
 import L from 'leaflet';
 
+/*
+ The bot protection page of the hosting of tracedetrail (o2switch, the "Tiger Protect" rule
+ "badbots"): the service refuses to serve the track page to the automated requests, so the answer
+ is reported as a download failure instead of an unsupported page.
+ */
+function isBotProtectionPage(documentText) {
+    return documentText.includes('Tiger Protect') || documentText.includes('Security_Rule = "badbots"');
+}
+
 class Tracedetrail extends BaseService {
     urlRe = /^https?:\/\/(?:www\.)?tracedetrail\.[a-z]{2,}.*\/(?:trace\/trace|trace|iframe)\/([0-9]+)/u;
 
@@ -24,6 +33,12 @@ class Tracedetrail extends BaseService {
         const response = responses[0];
         const documentText = response.responseText;
         try {
+            // the hosting of the service answers the bot protection page instead of the track page
+            // for automated requests, including the ones that go through a CORS proxy: there is no
+            // track data in the answer at all
+            if (isBotProtectionPage(documentText)) {
+                return [{name, error: 'NETWORK'}];
+            }
             const geometryMatch = /geometry\s*:\s*"(.+)",\n/u.exec(documentText);
             if (!geometryMatch) {
                 let error = 'UNSUPPORTED';
