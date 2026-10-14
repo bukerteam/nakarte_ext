@@ -1,4 +1,4 @@
-[![tests status](https://github.com/wladich/nakarte/workflows/check/badge.svg)](https://github.com/wladich/nakarte/actions?query=workflow%3Atest)
+[![tests status](https://github.com/bukerteam/nakarte_ext/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/bukerteam/nakarte_ext/actions/workflows/main.yml)
 
 ## Общее
 
