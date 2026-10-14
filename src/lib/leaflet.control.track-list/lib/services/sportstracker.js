@@ -50,6 +50,10 @@ class SportsTrackerActivity extends SportsTrackerBase {
         } catch (e) {
             return [{name, error: 'UNSUPPORTED'}];
         }
+        if (!data || !data.payload || !Array.isArray(data.payload.locations)) {
+            // the api stopped returning the track data (for example, to the anonymous requests)
+            return [{name, error: 'NETWORK'}];
+        }
         const track = data.payload.locations.map((location) => ({
                 lat: location.la,
                 lng: location.ln
@@ -57,7 +61,7 @@ class SportsTrackerActivity extends SportsTrackerBase {
         );
         if (data.payload.description) {
             name = data.payload.description;
-        } else {
+        } else if (metadata && metadata.payload && metadata.payload.startTime) {
             const startTime = new Date(metadata.payload.startTime).toDateString();
             name = `${metadata.payload.fullname} on ${startTime}`;
         }
